@@ -1,7 +1,7 @@
 CC = m68k-amigaos-gcc
 AS = m68k-amigaos-as
 CFLAGS += -Os -I ./inc -I .. -noixemul -I ../fat32 -DFATFS_IS_LITTLE_ENDIAN=0
-CFLAGS += -m68000 -Wall
+CFLAGS += -m68000 -Wall -Werror
 #CFLAGS += -DDEBUG
 LDFLAGS = -s  -Wl,-Map,foo.map -noixemul -m68000
 EXEC = HXCFEMNG

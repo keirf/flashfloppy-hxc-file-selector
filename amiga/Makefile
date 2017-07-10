@@ -1,17 +1,14 @@
-#CC=i386-pc-linux-gcc
-CC=m68k-amigaos-gcc.exe
-AS=m68k-amigaos-as.exe
-CFLAGS= -Os -I . -I .. -noixemul -I ../fat32 -DFATFS_IS_LITTLE_ENDIAN=0 -m68000 -Wall #-DDEBUG
-LDFLAGS=-s  -Wl,-Map,foo.map   -noixemul  -amiga-debug-hunk -m68000
-EXEC=HXCFEMNG
+CC = m68k-amigaos-gcc
+AS = m68k-amigaos-as
+CFLAGS += -Os -I . -I .. -noixemul -I ../fat32 -DFATFS_IS_LITTLE_ENDIAN=0
+CFLAGS += -m68000 -Wall
+#CFLAGS += -DDEBUG
+LDFLAGS = -s  -Wl,-Map,foo.map -noixemul -m68000
+EXEC = HXCFEMNG
 
 all: $(EXEC)
 	m68k-amigaos-strip -s $(EXEC)
-	#./upx  -9 $(EXEC)
-	#./Shrinkler $(EXEC) $(EXEC).PACK
-	#mv $(EXEC).PACK "H:\SDHxCFloppySelector.amigados\$(EXEC)"
-	mv $(EXEC) "H:\SDHxCFloppySelector.amigados\$(EXEC)"
-	cmd /c 'startfe.bat' &
+	exe2adf -i $(EXEC) -a AUTOBOOT.ADF -0 >/dev/null
 
 HXCFEMNG:      fectrl.o gui_utils.o amiga.o crc.o fat_access.o fat_filelib.o fat_misc.o fat_string.o fat_table.o fat_write.o fat_cache.o reboot.o msg_txt.o
 	$(CC) -o $@    $^ $(LDFLAGS)
@@ -56,10 +53,6 @@ fat_cache.o: ../fat32/fat_cache.c
 	$(CC) -o $@ -c $< $(CFLAGS)
 
 clean:
-	rm -rf *.o
+	rm -rf *.o *.adf *.map $(EXEC)
 
-
-mrproper: clean
-	rm -rf $(EXEC)
-
-.PHONY: clean mrproper
+.PHONY: clean

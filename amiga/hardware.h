@@ -10,7 +10,7 @@ unsigned char Keyboard();
 unsigned char wait_function_key();
 unsigned char get_char();
 void flush_char();
-char *strlwr(char *s);
+//char *strlwr(char *s);
 
 void reboot();
 

@@ -3,45 +3,34 @@
  *
  * This file is part of the HxCFloppyEmulator file selector.
  *
- * HxCFloppyEmulator file selector may be used and distributed without restriction
- * provided that this copyright statement is not removed from the file and that any
- * derivative work contains the original copyright notice and the associated
- * disclaimer.
+ * HxCFloppyEmulator file selector may be used and distributed without
+ * restriction provided that this copyright statement is not removed from the
+ * file and that any derivative work contains the original copyright notice and
+ * the associated disclaimer.
  *
  * HxCFloppyEmulator file selector is free software; you can redistribute it
- * and/or modify  it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * and/or modify  it under the terms of the GNU General Public License as 
+ * published by the Free Software Foundation; either version 2 of the License, 
+ * or (at your option) any later version.
  *
- * HxCFloppyEmulator file selector is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * HxCFloppyEmulator file selector is distributed in the hope that it will be
+ * useful, but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *   See the GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with HxCFloppyEmulator file selector; if not, write to the Free Software
+ * You should have received a copy of the GNU General Public License along 
+ * with HxCFloppyEmulator file selector; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
- *
-*/
+ */
 
-#include <intuition/intuitionbase.h>
+#include <exec/execbase.h>
 
-#include <clib/graphics_protos.h>
-#include <clib/intuition_protos.h>
-#include <graphics/gfxbase.h>
-#include <graphics/videocontrol.h>
+#include <proto/exec.h>
+#include <proto/dos.h>
 
-#include <devices/trackdisk.h>
-
-#include <exec/interrupts.h>
-
-#include <clib/exec_protos.h>
-#include <clib/dos_protos.h>
-
-#include <stdio.h>
-#include <malloc.h>
 #include <string.h>
 #include <stdarg.h>
+#include <stddef.h>
 
 #include "conf.h"
 #include "types.h"
@@ -52,6 +41,7 @@
 
 #include "hardware.h"
 #include "amiga_hw.h"
+#include "m68k.h"
 
 #include "gui_utils.h"
 
@@ -62,11 +52,10 @@
 #include "color_table.h"
 #include "mfm_table.h"
 
-
 #define DEPTH    2 /* 1 BitPlanes should be used, gives eight colours. */
 #define COLOURS  2 /* 2^1 = 2                                          */
 
-volatile unsigned short io_floppy_timeout;
+static volatile unsigned short io_floppy_timeout;
 
 unsigned char * screen_buffer;
 unsigned char * screen_buffer_backup;
@@ -93,47 +82,59 @@ unsigned short sector_pos[MAX_CACHE_SECTOR];
 
 unsigned char keyup;
 
-unsigned long timercnt;
-
-struct Interrupt *rbfint, *priorint;
-
-struct Library * libptr;
-struct IntuitionBase *IntuitionBase;
-struct GfxBase *GfxBaseptr;
-struct View * my_old_view;
-struct View view;
-struct ViewPort viewPort = { 0 };
-struct RasInfo rasInfo;
-struct BitMap my_bit_map;
-struct RastPort my_rast_port;
-struct Screen *screen;
 extern struct DosLibrary *DOSBase;
-UWORD  *pointer;
-struct ColorMap *cm=NULL;
 
-struct TextAttr MyFont =
-{
-    (STRPTR)"topaz.font", // Font Name
-    TOPAZ_SIXTY, // Font Height
-    FS_NORMAL, // Style
-    FPF_ROMFONT, // Preferences
-};
+#if __GNUC__ < 3
+#define attribute_used __attribute__((unused))
+#define likely(x) x
+#define unlikely(x) x
+#else
+#define attribute_used __attribute__((used))
+#define likely(x) __builtin_expect((x),1)
+#define unlikely(x) __builtin_expect((x),0)
+#endif
 
-struct NewScreen screen_cfg =
-{
-    (WORD)0,   /* the LeftEdge should be equal to zero */
-    (WORD)0,   /* TopEdge */
-    (WORD)640, /* Width (low-resolution) */
-    (WORD)256, /* Height (non-interlace) */
-    (WORD)1,   /* Depth (4 colors will be available) */
-    (UBYTE)0, (UBYTE)1, /* the DetailPen and BlockPen specifications */
-    (UWORD)0,  /* no special display modes */
-    CUSTOMSCREEN, /* the screen type */
-    &MyFont, /* use my own font */
-    (UBYTE *)"HxC Floppy Emulator file selector", /* this declaration is compiled as a text pointer */
-    (struct Gadget *)NULL, /* no special screen gadgets */
-    (struct BitMap *)NULL  /* no special CustomBitMap */
-};
+#define barrier() asm volatile("" ::: "memory")
+
+#ifndef offsetof
+#define offsetof(a,b) __builtin_offsetof(a,b)
+#endif
+#define container_of(ptr, type, member) ({                      \
+        typeof( ((type *)0)->member ) *__mptr = (ptr);          \
+        (type *)( (char *)__mptr - offsetof(type,member) );})
+#define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
+
+/* Write to INTREQ twice at end of ISR to prevent spurious re-entry on 
+ * A4000 with faster processors (040/060). */
+#define IRQ_RESET(x) do {                       \
+    uint16_t __x = (x);                         \
+    cust->intreq = __x;                         \
+    cust->intreq = __x;                         \
+} while (0)
+/* Similarly for disabling an IRQ, write INTENA twice to be sure that an 
+ * interrupt won't creep in after the IRQ_DISABLE(). */
+#define IRQ_DISABLE(x) do {                     \
+    uint16_t __x = (x);                         \
+    cust->intena = __x;                         \
+    cust->intena = __x;                         \
+} while (0)
+#define IRQ_ENABLE(x) do {                      \
+    uint16_t __x = INT_SETCLR | (x);            \
+    cust->intena = __x;                         \
+} while (0)
+
+#define IRQ(name)                               \
+static void c_##name(void) attribute_used;      \
+void name(void);                                \
+asm (                                           \
+"_"#name":                          \n"         \
+"    movem.l %d0-%d1/%a0-%a1,-(%sp) \n"         \
+"    jbsr    _c_"#name"              \n"        \
+"    movem.l (%sp)+,%d0-%d1/%a0-%a1 \n"         \
+"    rte                            \n"         \
+)
+
+volatile struct m68k_vector_table *m68k_vec;
 
 static volatile struct amiga_custom * const cust =
     (struct amiga_custom *)0xdff000;
@@ -141,6 +142,32 @@ static volatile struct amiga_cia * const ciaa =
     (struct amiga_cia *)0x0bfe001;
 static volatile struct amiga_cia * const ciab =
     (struct amiga_cia *)0x0bfd000;
+
+/* Division 32:16 -> 32q:16r */
+#define do_div(x, y) ({                                             \
+    uint32_t _x = (x), _y = (y), _q, _r;                            \
+    asm volatile (                                                  \
+        "swap %3; "                                                 \
+        "move.w %3,%0; "                                            \
+        "divu.w %4,%0; "  /* hi / div */                            \
+        "move.w %0,%1; "  /* stash quotient-hi */                   \
+        "swap %3; "                                                 \
+        "move.w %3,%0; "  /* lo / div */                            \
+        "divu.w %4,%0; "                                            \
+        "swap %1; "                                                 \
+        "move.w %0,%1; "  /* stash quotient-lo */                   \
+        "eor.w %0,%0; "                                             \
+        "swap %0; "                                                 \
+        : "=&d" (_r), "=&d" (_q) : "0" (0), "d" (_x), "d" (_y));    \
+   (x) = _q;                                                        \
+   _r;                                                              \
+})
+
+static uint32_t div32(uint32_t dividend, uint16_t divisor)
+{
+    do_div(dividend, divisor);
+    return dividend;
+}
 
 #ifdef DEBUG
 
@@ -185,58 +212,89 @@ void dbg_printf(char *fmt, ...)
 
 #endif
 
-void waitus(int centus)
+/****************************************************************************
+ *                              Time
+ ****************************************************************************/
+
+/* PAL/NTSC and implied CPU frequency. */
+static uint8_t is_pal;
+static unsigned int cpu_hz;
+#define PAL_HZ 7093790
+#define NTSC_HZ 7159090
+
+/* VBL IRQ: 16- and 32-bit timestamps, and VBL counter. */
+static volatile uint32_t stamp32;
+static volatile uint16_t stamp16;
+static volatile unsigned int vblank_count;
+
+/* Loop to get consistent current CIA timer value. */
+#define get_ciatime(_cia, _tim) ({              \
+    uint8_t __hi, __lo;                         \
+    do {                                        \
+        __hi = (_cia)->_tim##hi;                \
+        __lo = (_cia)->_tim##lo;                \
+    } while (__hi != (_cia)->_tim##hi);         \
+    ((uint16_t)__hi << 8) | __lo; })
+
+static uint16_t get_ciaatb(void)
 {
-    unsigned short time;
+    return get_ciatime(ciaa, tb);
+}
 
-    ciab->cra = (ciab->cra & 0xc0) | 0x08;
-    ciab->icr = 0x7f;
+static uint32_t get_time(void)
+{
+    uint32_t _stamp32;
+    uint16_t _stamp16;
 
-    time = 0x48 * centus;
-    ciab->talo = time & 0xff;
-    ciab->tahi = time >> 8;
+    /* Loop to get consistent timestamps from the VBL IRQ handler. */
+    do {
+        _stamp32 = stamp32;
+        _stamp16 = stamp16;
+    } while (_stamp32 != stamp32);
 
-    ciab->cra |= 1;
+    return -(_stamp32 - (uint16_t)(_stamp16 - get_ciaatb()));
+}
 
-    while (!(ciab->icr & 1))
+static void delay_ms(unsigned int ms)
+{
+    uint16_t ticks_per_ms = div32(cpu_hz+9999, 10000); /* round up */
+    uint32_t s, t;
+
+    s = get_time();
+    do {
+        t = div32(get_time() - s, ticks_per_ms);
+    } while (t < ms);
+}
+
+static void delay_us(int us)
+{
+    uint32_t s;
+    s = get_time();
+    /* CIA timer ticks a bit slower than 1MHz, but it'll do. */
+    while ((get_time() - s) < us)
         continue;
+}
+
+static uint8_t detect_pal_chipset(void)
+{
+    return !(cust->vposr & (1u<<12));
 }
 
 void waitms(int ms)
 {
-    int cnt;
-
-    ciab->cra = (ciab->cra & 0xc0) | 0x08;
-    ciab->icr = 0x7f;
-
-    ciab->talo = 0xcc;
-    ciab->tahi = 0x02;
-
-    ciab->cra |= 1;
-
-    for (cnt = 0; cnt < ms; cnt++) {
-        while (!(ciab->icr & 1))
-            continue;
-        ciab->cra |= 1;
-    }
-}
-
-void alloc_error()
-{
-    hxc_printf_box("ERROR: Memory Allocation Error -> No more free mem ?");
-    lockup();
+    delay_ms(ms);
 }
 
 void lockup()
 {
     dbg_printf("lockup : Sofware halted...\n");
-
     for (;;)
-        sleep(100);
+        continue;
 }
-/********************************************************************************
+
+/****************************************************************************
  *                              FDC I/O
- *********************************************************************************/
+ ****************************************************************************/
 
 /*
  * Returns the unit number of the underlying device of a filesystem lock.
@@ -297,20 +355,18 @@ int test_drive(int drive)
 {
     int t,j,c;
 
-    Forbid();
-
     ciab->prb = ~(CIABPRB_MTR | (CIABPRB_SEL0<<(drive&3)));
 
-    waitms(100);
+    delay_ms(100);
 
     // Jump to Track 0 ("Slow")
     t = 0;
     while ((ciaa->pra & CIAAPRA_TK0) && (t<260))
     {
         ciab->prb = ~(CIABPRB_MTR | (CIABPRB_SEL0<<(drive&3)) | CIABPRB_STEP);
-        waitus(10);
+        delay_us(10);
         ciab->prb = ~(CIABPRB_MTR | (CIABPRB_SEL0<<(drive&3)));
-        waitus(80);
+        delay_us(80);
 
         t++;
     }
@@ -323,20 +379,20 @@ int test_drive(int drive)
         // Jump to Track 40 (Fast)
         for (j = 0; j < 40; j++) {
             ciab->prb = ~(CIABPRB_MTR | (CIABPRB_SEL0<<(drive&3)) | CIABPRB_DIR |CIABPRB_STEP);
-            waitus(8);
+            delay_us(8);
             ciab->prb = ~(CIABPRB_MTR | (CIABPRB_SEL0<<(drive&3)) | CIABPRB_DIR);
-            waitus(8);
+            delay_us(8);
         }
 
-        waitus(200);
+        delay_us(200);
 
         // And go back to Track 0 (Slow)
         t = 0;
         while ((ciaa->pra & CIAAPRA_TK0) && (t < 40)) {
             ciab->prb = ~(CIABPRB_MTR | (CIABPRB_SEL0<<(drive&3))  | CIABPRB_STEP);
-            waitus(10);
+            delay_us(10);
             ciab->prb = ~(CIABPRB_MTR | (CIABPRB_SEL0<<(drive&3)));
-            waitus(80);
+            delay_us(80);
 
             t++;
         }
@@ -346,41 +402,43 @@ int test_drive(int drive)
 
     if (t == 40) {
         ciab->prb = ~(CIABPRB_MTR | (CIABPRB_SEL0<<(drive&3)));
-        Permit();
         return 1;
     }
 
     ciab->prb = ~(CIABPRB_MTR | (CIABPRB_SEL0<<(drive&3)));
 
 fail:
-    Permit();
     return 0;
 }
 
-int get_start_unit(char * path)
+/* Do the system-friendly bit while AmigaOS is still alive. */
+static int start_unit = -1;
+static void _get_start_unit(char *path)
+{
+    start_unit = (GetLibraryVersion((struct Library *) DOSBase) >= 36)
+        ? GetUnitNumFromLock(GetProgramDir())
+        : GetUnitNumFromPath(path);
+    if (start_unit < 0)
+        start_unit = 0;
+    start_unit &= 3;
+}
+
+int get_start_unit(char *path)
 {
     int i;
-    LONG startedFromUnitNum;
 
-    dbg_printf("get_start_unit\n");
+    if (start_unit < 0)
+        return -1;
 
-    if (GetLibraryVersion((struct Library *) DOSBase) >= 36)
-        startedFromUnitNum = GetUnitNumFromLock( GetProgramDir() );
-    else
-        startedFromUnitNum = GetUnitNumFromPath( path );
-
-    if ( startedFromUnitNum < 0 )
-        startedFromUnitNum = 0;
-
-    for ( i = 0; i < 4; i++ ) {
-        if (test_drive((startedFromUnitNum + i) & 0x3)) {
-            dbg_printf("get_start_unit : drive %d\n",(startedFromUnitNum + i) & 0x3);
-            return (startedFromUnitNum + i) & 0x3;
+    for (i = 0; i < 4; i++) {
+        if (test_drive(start_unit)) {
+            dbg_printf("get_start_unit : drive %d\n", start_unit);
+            return start_unit;
         }
+        start_unit = (start_unit + 1) & 3;
     }
 
     dbg_printf("get_start_unit : drive not found !\n");
-
     return -1;
 }
 
@@ -388,21 +446,20 @@ int jumptotrack(unsigned char t)
 {
     unsigned short j,k;
 
-    Forbid();
     ciab->prb = ~(CIABPRB_MTR | CIABPRB_DSKSEL);
 
     dbg_printf("jumptotrack : %d\n",t);
 
-    waitms(100);
+    delay_ms(100);
 
     dbg_printf("jumptotrack %d - seek track 0...\n",t);
 
     k = 0;
     while ((ciaa->pra & CIAAPRA_TK0) && k<1024) {
         ciab->prb = ~(CIABPRB_MTR | CIABPRB_DSKSEL  | CIABPRB_STEP);
-        waitms(1);
+        delay_ms(1);
         ciab->prb = ~(CIABPRB_MTR | CIABPRB_DSKSEL);
-        waitms(1);
+        delay_ms(1);
         k++;
     }
 
@@ -411,23 +468,19 @@ int jumptotrack(unsigned char t)
 
         for (j = 0; j < t; j++) {
             ciab->prb = ~(CIABPRB_MTR | CIABPRB_DSKSEL | CIABPRB_DIR |CIABPRB_STEP);
-            waitms(1);
+            delay_ms(1);
             ciab->prb = ~(CIABPRB_MTR | CIABPRB_DSKSEL | CIABPRB_DIR);
-            waitms(1);
+            delay_ms(1);
         }
 
         ciab->prb = ~(CIABPRB_MTR | CIABPRB_DSKSEL);
 
         dbg_printf("jumptotrack %d - jump done\n",t);
 
-        Permit();
-
         return 0;
     }
 
     dbg_printf("jumptotrack %d - track 0 not found!!\n",t);
-
-    Permit();
     return 1;
 };
 
@@ -568,8 +621,6 @@ unsigned char writesector(unsigned char sectornum,unsigned char * data)
 
     dbg_printf("writesector : %d\n",sectornum);
 
-    Forbid();
-
     retry2 = 2;
 
     i = 0;
@@ -624,10 +675,8 @@ unsigned char writesector(unsigned char sectornum,unsigned char * data)
 
                 retry--;
 
-                if (!readtrack(track_buffer_rd,16,0)) {
-                    Permit();
+                if (!readtrack(track_buffer_rd,16,0))
                     return 0;
-                }
 
                 while (track_buffer_rd[i] == 0x4489 && (i<16))
                     i++;
@@ -655,10 +704,8 @@ unsigned char writesector(unsigned char sectornum,unsigned char * data)
 
                         if (j == 3) {
                             sectorfound=1;
-                            if (!writetrack(track_buffer_wr,len,0)) {
-                                Permit();
+                            if (!writetrack(track_buffer_wr,len,0))
                                 return 0;
-                            }
                         }
                     }
                 }
@@ -677,13 +724,10 @@ unsigned char writesector(unsigned char sectornum,unsigned char * data)
     } else {
         sectorfound = 1;
 
-        if (!writetrack(track_buffer_wr,len,1)) {
-            Permit();
+        if (!writetrack(track_buffer_wr,len,1))
             return 0;
-        }
     }
 
-    Permit();
     return sectorfound;
 }
 
@@ -726,12 +770,8 @@ unsigned char readsector(unsigned char sectornum,unsigned char * data,unsigned c
             sectorfound = 0;
             i = 0;
             if (!validcache || invalidate_cache) {
-                Forbid();
-                if (!readtrack(track_buffer_rd,RD_TRACK_BUFFER_SIZE,0)) {
-                    Permit();
+                if (!readtrack(track_buffer_rd,RD_TRACK_BUFFER_SIZE,0))
                     return 0;
-                }
-                Permit();
 
                 i = 1;
                 for (j = 0; j < MAX_CACHE_SECTOR; j++)
@@ -856,54 +896,32 @@ void init_fdc(int drive)
 
     dbg_printf("init_fdc\n");
 
-    CIABPRB_DSKSEL = CIABPRB_SEL0 << (drive&3);
+    CIABPRB_DSKSEL = CIABPRB_SEL0 << (drive & 3);
 
-    validcache=0;
+    validcache = 0;
 
-    mfmtobinLUT_L=(unsigned char*)AllocMem(256,MEMF_CHIP);
-    mfmtobinLUT_H=(unsigned char*)AllocMem(256,MEMF_CHIP);
-    if (mfmtobinLUT_L && mfmtobinLUT_H) {
-        for (i = 0; i < 256; i++) {
-            mfmtobinLUT_L[i] =   ((i&0x40)>>3) | ((i&0x10)>>2) | ((i&0x04)>>1) | (i&0x01);
-            mfmtobinLUT_H[i] =   mfmtobinLUT_L[i] << 4;
-        }
-    } else {
-        alloc_error();
+    for (i = 0; i < 256; i++) {
+        mfmtobinLUT_L[i] = (((i&0x40)>>3) | ((i&0x10)>>2) |
+                            ((i&0x04)>>1) | (i&0x01));
+        mfmtobinLUT_H[i] = mfmtobinLUT_L[i] << 4;
     }
-
-    track_buffer_rd = (unsigned short*)AllocMem( sizeof(unsigned short) * RD_TRACK_BUFFER_SIZE, MEMF_CHIP);
-    if (track_buffer_rd) {
-        memset(track_buffer_rd,0,sizeof(unsigned short) * RD_TRACK_BUFFER_SIZE);
-    } else {
-        alloc_error();
-    }
-
-    track_buffer_wr=(unsigned short*)AllocMem( sizeof(unsigned short) * WR_TRACK_BUFFER_SIZE,MEMF_CHIP);
-    if (track_buffer_wr) {
-        memset(track_buffer_wr,0, sizeof(unsigned short) * WR_TRACK_BUFFER_SIZE);
-    } else {
-        alloc_error();
-    }
-
-    Forbid();
 
     ciab->prb = ~(CIABPRB_MTR | CIABPRB_DSKSEL);
-    cust->dmacon = 0x8210;
+    cust->dmacon = DMA_SETCLR | DMA_DSKEN;
 
     if (jumptotrack(255)) {
-        Permit();
-        hxc_printf_box("ERROR: init_fdc drive %d -> failure while seeking the track 00!",drive);
+        hxc_printf_box("ERROR: init_fdc drive %d -> failure "
+                       "while seeking the track 00!", drive);
         lockup();
     }
-    Delay(12);
-    cust->intreq = 2;
 
-    Permit();
+    delay_ms(200);
+    cust->intreq = 2;
 }
 
-/********************************************************************************
+/****************************************************************************
  *                          Joystick / Keyboard I/O
- *********************************************************************************/
+ ****************************************************************************/
 
 static unsigned char Joystick(void)
 {
@@ -978,7 +996,7 @@ unsigned char get_char(void)
                 if (key & 0x80)
                    c=1;
             } while (key & 0x80);
-            waitms(55);
+            delay_ms(55);
             c--;
         } while (c);
 
@@ -1003,7 +1021,7 @@ unsigned char wait_function_key(void)
     function_code = FCT_NO_FUNCTION;
 
     if (keyup == 1)
-        waitms(250);
+        delay_ms(250);
 
     do {
         c = 1;
@@ -1018,7 +1036,7 @@ unsigned char wait_function_key(void)
                 }
             } while ((key & 0x80) && !joy);
 
-            waitms(55);
+            delay_ms(55);
 
             c--;
 
@@ -1055,121 +1073,190 @@ unsigned char wait_function_key(void)
     return function_code;
 }
 
-/********************************************************************************
+/****************************************************************************
  *                              Display Output
- *********************************************************************************/
+ ****************************************************************************/
+
+/* Regardless of intrinsic PAL/NTSC-ness, display may be 50 or 60Hz. */
+static uint8_t vbl_hz;
+
+/* Display size and depth. */
+#define xres    640
+#define yres    256
+#define bplsz   (yres*xres/8)
+#define planes  2
+
+/* Top-left coordinates of the display. */
+#define diwstrt_h 0x81
+#define diwstrt_v 0x46
+
+static uint16_t *copper;
+
+/* Wait for end of bitplane DMA. */
+void wait_bos(void)
+{
+    while (*(volatile uint8_t *)&cust->vhposr != 0xf0)
+        continue;
+}
+
+static uint8_t detect_vbl_hz(void)
+{
+    uint32_t ticks;
+
+    /* Synchronise to Vblank. */
+    vblank_count = 0;
+    while (!vblank_count)
+        continue;
+    ticks = get_time();
+
+    /* Wait 10 blanks. */
+    while (vblank_count < 11)
+        continue;
+    ticks = get_time() - ticks;
+
+    /* Expected tick values: 
+     *  NTSC: 10 * (715909 / 60) = 119318
+     *  PAL:  10 * (709379 / 50) = 141875 
+     * Use 130,000 as mid-point to discriminate.. */
+    return (ticks > 130000) ? 50 : 60;
+}
+
+static void take_over_system(void)
+{
+    /* Disable all DMA and interrupts. */
+    cust->intena = 0x7fff;
+    cust->intreq = 0x7fff;
+    while (!(cust->intreqr & INT_VBLANK))
+        continue; /* wait for vbl before disabling sprite dma */
+    cust->dmacon = 0x7fff;
+    cust->adkcon = 0x7fff;
+
+    /* Master DMA/IRQ enable. */
+    cust->dmacon = 0x8200;
+    cust->intena = 0xc000;
+
+    /* Blank screen. */
+    cust->color[0] = colortable[0];
+
+    /* Floppy motors off. */
+    ciab->prb = 0xf8;
+    ciab->prb = 0x87;
+    ciab->prb = 0x78;
+
+    /* Set keyboard serial line to input mode. */
+    ciaa->cra &= ~CIACRA_SPMODE;
+
+    /* Set up CIAA ICR. We only care about keyboard. */
+    ciaa->icr = (uint8_t)~CIAICR_SETCLR;
+    ciaa->icr = CIAICR_SETCLR | CIAICR_SERIAL;
+
+    /* Set up CIAB ICR. We only care about FLAG line (disk index). */
+    ciab->icr = (uint8_t)~CIAICR_SETCLR;
+    ciab->icr = CIAICR_SETCLR | CIAICR_FLAG;
+
+    /* Start all CIA timers in continuous mode. */
+    ciaa->talo = ciaa->tahi = ciab->talo = ciab->tahi = 0xff;
+    ciaa->tblo = ciaa->tbhi = ciab->tblo = ciab->tbhi = 0xff;
+    ciaa->cra = ciab->cra = CIACRA_LOAD | CIACRA_START;
+    ciaa->crb = ciab->crb = CIACRB_LOAD | CIACRB_START;
+}
+
+IRQ(VBLANK_IRQ);
+static void c_VBLANK_IRQ(void)
+{
+    vblank_count++;
+    io_floppy_timeout++;
+
+    if ((Keyboard() & 0x80) && !Joystick())
+        keyup = 2;
+
+    IRQ_RESET(INT_VBLANK);
+}
 
 int init_display(void)
 {
-    unsigned short loop;
+    static const uint16_t static_copper[] = {
+        0x0092, 0x003c, /* ddfstrt */
+        0x0094, 0x00d4, /* ddfstop */
+        0x0100, 0xa200, /* bplcon0 */
+        0x0102, 0x0000, /* bplcon1 */
+        0x0104, 0x0000, /* bplcon2 */
+        0x0108, 0x0000, 0x010a, 0x0000, /* bplxmod */
+        0xffff, 0xfffe
+    };
 
+    uint16_t *p;
+    unsigned int i;
+
+    /* Done with AmigaOS. Take over. */
+    take_over_system();
+
+    /* Init copper. */
+    p = copper;
+    for (i = 0; i < 4; i++) {
+        *p++ = 0x180 + i*2; /* color00-color03 */
+        *p++ = colortable[i];
+    }
+    for (i = 0; i < 2; i++) {
+        uint32_t bpl = (uint32_t)screen_buffer + i*bplsz;
+        *p++ = 0xe0 + i*4; /* bplxpth */
+        *p++ = (uint16_t)(bpl >> 16);
+        *p++ = 0xe2 + i*4; /* bplxptl */
+        *p++ = (uint16_t)bpl;
+    }
+    *p++ = 0x008e; /* diwstrt */
+    *p++ = (diwstrt_v << 8) | diwstrt_h;
+    *p++ = 0x0090; /* diwstop */
+    *p++ = (((diwstrt_v+yres) & 0xFF) << 8) | ((diwstrt_h+xres/2) & 0xFF);
+    memcpy(p, (uint16_t *)static_copper, sizeof(static_copper));
+    cust->cop1lc.p = copper;
+
+    m68k_vec->level3_autovector.p = VBLANK_IRQ;
+
+    wait_bos();
+    cust->dmacon = DMA_SETCLR | DMA_COPEN | DMA_DSKEN;
+    cust->intena = INT_SETCLR | INT_VBLANK;
+
+    /* Detect our hardware environment. */
+    vbl_hz = detect_vbl_hz();
+    is_pal = detect_pal_chipset();
+    cpu_hz = is_pal ? PAL_HZ : NTSC_HZ;
+
+    /* 640x256 or 640x200 */
     SCREEN_XRESOL = 640;
-
-    memset(&view,0,sizeof(struct View));
-    memset(&viewPort,0,sizeof(struct ViewPort));
-    memset(&rasInfo,0,sizeof(struct RasInfo));
-    memset(&my_bit_map,0,sizeof(struct BitMap));
-    memset(&my_rast_port,0,sizeof(struct RastPort));
-    screen_buffer_backup=(unsigned char*)malloc(8*1024);
-
-    IntuitionBase= (struct IntuitionBase *) OpenLibrary( (CONST_STRPTR)"intuition.library", 0 );
-    screen=(struct Screen *)OpenScreen(&screen_cfg);
-
-    /* Open the Graphics library: */
-    GfxBaseptr = (struct GfxBase *) OpenLibrary( (CONST_STRPTR)"graphics.library", 0 );
-    if ( !GfxBaseptr )  return -1;
-
-    /* Save the current View, so we can restore it later: */
-    my_old_view = GfxBaseptr->ActiView;
-
-    /* 1. Prepare the View structure, and give it a pointer to */
-    /*    the first ViewPort:                                  */
-    InitView( &view );
-    view.Modes |= HIRES;//LACE;
-
-    /* 4. Prepare the BitMap: */
-    InitBitMap( &my_bit_map, DEPTH, SCREEN_XRESOL, 256 );
-
-    /* Allocate memory for the Raster: */
-    for ( loop = 0; loop < DEPTH; loop++ )
-    {
-        my_bit_map.Planes[ loop ] = (PLANEPTR) AllocRaster( SCREEN_XRESOL, 256 );
-        BltClear( my_bit_map.Planes[ loop ], RASSIZE( SCREEN_XRESOL, 256 ), 0 );
+    SCREEN_YRESOL = (vbl_hz == 50) ? 256 : 200;
+    if (vbl_hz == 60) {
+        /* Modify copper with correct DIWSTOP for NTSC. */
+        for (p = copper; *p != 0x90; p += 2)
+            continue;
+        p[1] = (((diwstrt_v+SCREEN_YRESOL) & 0xFF) << 8)
+            | ((diwstrt_h+xres/2) & 0xFF);
     }
 
-    /* 5. Prepare the RasInfo structure: */
-    rasInfo.BitMap = &my_bit_map; /* Pointer to the BitMap structure.  */
-    rasInfo.RxOffset = 0;         /* The top left corner of the Raster */
-    rasInfo.RyOffset = 0;         /* should be at the top left corner  */
-    /* of the display.                   */
-    rasInfo.Next = NULL;          /* Single playfield - only one       */
-    /* RasInfo structure is necessary.   */
-
-    InitVPort(&viewPort);           /*  Initialize the ViewPort.  */
-    view.ViewPort = &viewPort;      /*  Link the ViewPort into the View.  */
-    viewPort.RasInfo = &rasInfo;
-    viewPort.DWidth = SCREEN_XRESOL;
-    viewPort.DHeight = 256;
-
-    /* Set the display mode the old-fashioned way */
-    viewPort.Modes=HIRES;// | LACE;
-
-    cm =(struct ColorMap *) GetColorMap(COLOURS);
-
-    /* Attach the ColorMap, old 1.3-style */
-    viewPort.ColorMap = cm;
-
-    LoadRGB4(&viewPort, colortable, 4);
-
-    /* 6. Create the display: */
-    MakeVPort( &view, &viewPort );
-    MrgCop( &view );
-    LoadView( &view );
-    WaitTOF();
-    WaitTOF();
-
-    /* 7. Prepare the RastPort, and give it a pointer to the BitMap. */
-    InitRastPort( &my_rast_port );
-    my_rast_port.BitMap = &my_bit_map;
-    SetAPen( &my_rast_port,   1 );
-    screen_buffer = my_bit_map.Planes[ 0 ];
-
-    SCREEN_YRESOL = (get_vid_mode() > 290) ? 256 : 200;
-
-    // Number of free line to display the file list.
-
-    disablemousepointer();
-    init_timer();
+    /* Make sure the copper has run once through, then enable bitplane DMA. */
+    delay_ms(1);
+    wait_bos();
+    cust->dmacon = DMA_SETCLR | DMA_BPLEN;
 
     return 0;
 }
 
-unsigned short get_vid_mode(void)
-{
-    unsigned short vpos = 0,vpos2 = 0;
-
-    Forbid();
-    do {
-        vpos = cust->vhposr >> 8;
-        while (vpos == (cust->vhposr >> 8))
-            continue;
-
-        vpos = ((cust->vposr&1)<<8) | (cust->vhposr>>8);
-        if (vpos >= vpos2)
-            vpos2 = vpos;
-    } while (vpos >= vpos2);
-    Permit();
-    return vpos2;
-}
-
-void disablemousepointer(void)
-{
-    cust->dmacon = 0x20;
-}
-
 unsigned char set_color_scheme(unsigned char color)
 {
-    LoadRGB4(&viewPort, &colortable[(color&0x1F)*4], 4);
+    UWORD *c = &colortable[(color&0x1F)*4];
+    uint16_t *p;
+    unsigned int i;
+
+    /* Find colour section of copperlist. */
+    for (p = copper; *p != 0x180; p += 2)
+        continue;
+
+    /* Load 4 colours into the copperlist. */
+    for (i = 0; i < 4; i++) {
+        p[1] = *c++;
+        p += 2;
+    }
+
     return color;
 }
 
@@ -1279,28 +1366,41 @@ void reboot(void)
     lockup();
 }
 
-static void ithandler(void)
+void getvbr(void);
+asm (
+    "_getvbr:                 \n"
+    "    dc.l    0x4e7a0801   \n"     /* movec.l vbr,d0 */
+    "    move.l  d0,_m68k_vec \n"
+    "    rte                  \n"
+    );
+
+/* We abuse this hook to do all our system-friendly stuff before we knock 
+ * the system on the head. */
+int process_command_line(int argc, char *argv[])
 {
-    timercnt++;
+    /* Allocate disk buffers. */
+    mfmtobinLUT_L = AllocMem(256, MEMF_ANY);
+    mfmtobinLUT_H = AllocMem(256, MEMF_ANY);
+    track_buffer_rd = AllocMem(2 * RD_TRACK_BUFFER_SIZE, MEMF_CHIP);
+    track_buffer_wr = AllocMem(2 * WR_TRACK_BUFFER_SIZE, MEMF_CHIP);
 
-    io_floppy_timeout++;
+    /* Allocate display buffers. */
+    screen_buffer_backup = AllocMem(8*1024, MEMF_ANY);
+    screen_buffer = AllocMem(bplsz*planes, MEMF_CHIP|MEMF_CLEAR);
+    copper = AllocMem(256, MEMF_CHIP);
 
-    if ((Keyboard() & 0x80)  && !Joystick())
-        keyup = 2;
-}
+    /* Fail on any allocation error. */
+    if (!mfmtobinLUT_L || !mfmtobinLUT_H
+        || !track_buffer_rd || !track_buffer_wr
+        || !screen_buffer_backup || !screen_buffer || !copper)
+        return -1;
 
-void init_timer(void)
-{
-    rbfint = AllocMem(sizeof(struct Interrupt), MEMF_PUBLIC|MEMF_CLEAR);
-    rbfint->is_Node.ln_Type = NT_INTERRUPT;      /* Init interrupt node. */
-    rbfint->is_Node.ln_Name = "HxCFESelectorTimerInt";
-    rbfint->is_Data = 0;//(APTR)rbfdata;
-    rbfint->is_Code = ithandler;
+    /* Find FlashFloppy/HxC drive unit. */
+    _get_start_unit(argv ? argv[0] : NULL);
 
-    AddIntServer(5,rbfint);
-}
+    /* If running on 68010+ VBR may be non-zero. */
+    if (SysBase->AttnFlags & AFF_68010)
+        Supervisor((void *)getvbr);
 
-int process_command_line(int argc, char* argv[])
-{
     return 0;
 }

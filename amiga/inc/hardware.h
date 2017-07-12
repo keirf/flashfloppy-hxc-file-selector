@@ -13,13 +13,8 @@ void flush_char(void);
 void reboot(void);
 
 int init_display(void);
-unsigned short get_vid_mode(void);
-void setvideomode(int mode);
-void disablemousepointer(void);
 void display_sprite(unsigned char * membuffer, bmaptype * sprite,int x, int y);
 void print_char8x8(unsigned char * membuffer, bmaptype * font,int x, int y,unsigned char c);
-
-void init_timer(void);
 
 void sleep(int secs);
 void waitms(int ms);

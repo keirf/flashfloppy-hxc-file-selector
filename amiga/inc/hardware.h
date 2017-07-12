@@ -9,6 +9,7 @@ int get_start_unit(char * path);
 unsigned char wait_function_key(void);
 unsigned char get_char(void);
 void flush_char(void);
+char *strlwr(char *s);
 
 void reboot(void);
 

@@ -1,21 +1,24 @@
 CC = m68k-amigaos-gcc
 AS = m68k-amigaos-as
 
-CFLAGS += -Os -I./inc -I.. -I../fat32 -DFATFS_IS_LITTLE_ENDIAN=0
-CFLAGS += -m68000 -Wall -Werror -noixemul -std=gnu99 -msoft-float
+CFLAGS += -Os -I./inc -I.. -I../fat32 -nostdlib -DFATFS_IS_LITTLE_ENDIAN=0
+CFLAGS += -m68000 -Wall -Werror -std=gnu99 -msoft-float -fno-builtin
 #CFLAGS += -DDEBUG
-LDFLAGS = -s  -Wl,-Map,foo.map -noixemul -m68000
+LDFLAGS = $(CFLAGS) -s -Wl,-Map,foo.map
 EXEC = HXCFEMNG
 
 all: $(EXEC)
 	m68k-amigaos-strip -s $(EXEC)
 	exe2adf -i $(EXEC) -a AUTOBOOT.ADF -0 >/dev/null
 
-HXCFEMNG:      fectrl.o gui_utils.o amiga.o crc.o fat_access.o fat_filelib.o fat_misc.o fat_string.o fat_table.o fat_write.o fat_cache.o reboot.o msg_txt.o
+HXCFEMNG: entry.o fectrl.o gui_utils.o amiga.o libnix.o math.o crc.o fat_access.o fat_filelib.o fat_misc.o fat_string.o fat_table.o fat_write.o fat_cache.o reboot.o msg_txt.o
 	$(CC) -o $@    $^ $(LDFLAGS)
 
+entry.o: tinynix/entry.S
+	$(CC) -o $@ -c $< $(CFLAGS)
+
 reboot.o: reboot.S
-	$(AS) -o $@ $< 
+	$(CC) -o $@ -c $< $(CFLAGS)
 
 fectrl.o: ../fectrl.c
 	$(CC) -o $@ -c $< $(CFLAGS)
@@ -27,6 +30,12 @@ msg_txt.o: ../msg_txt.c
 	$(CC) -o $@ -c $< $(CFLAGS)
 
 amiga.o: amiga.c
+	$(CC) -o $@ -c $< $(CFLAGS)
+
+libnix.o: tinynix/libnix.c
+	$(CC) -o $@ -c $< $(CFLAGS)
+
+math.o: tinynix/math.c
 	$(CC) -o $@ -c $< $(CFLAGS)
 
 crc.o: crc.c

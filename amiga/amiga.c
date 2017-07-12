@@ -285,6 +285,12 @@ void waitms(int ms)
     delay_ms(ms);
 }
 
+void sleep(int secs)
+{
+    while (secs--)
+        delay_ms(1000);
+}
+
 void lockup()
 {
     dbg_printf("lockup : Sofware halted...\n");
@@ -300,47 +306,20 @@ void lockup()
  * Returns the unit number of the underlying device of a filesystem lock.
  * Returns -1 on failure.
  */
-LONG GetUnitNumFromLock(BPTR lock) {
+LONG GetUnitNumFromLock(BPTR lock)
+{
     LONG unitNum = -1;
+
     if (lock != 0) {
-        struct InfoData *infoData = AllocMem(sizeof(struct InfoData), MEMF_ANY);
-        if (NULL != infoData) {
-            if (Info(lock, infoData)) {
+        struct InfoData *infoData = AllocMem(sizeof(*infoData), MEMF_ANY);
+        if (infoData != NULL) {
+            if (Info(lock, infoData))
                 unitNum = infoData->id_UnitNumber;
-            }
-            FreeMem(infoData, sizeof(struct InfoData));
+            FreeMem(infoData, sizeof(*infoData));
         }
     }
 
     dbg_printf("GetUnitNumFromLock : %d\n", unitNum);
-    return unitNum;
-}
-
-/*
- * Returns the unit number of the underlying device of a filesystem path.
- * Returns -1 on failure.
- */
-LONG GetUnitNumFromPath(char *path) {
-    LONG unitNum = -1;
-
-    if (path)
-    {
-        dbg_printf("GetUnitNumFromPath : %s\n",path);
-
-        BPTR lock = Lock((CONST_STRPTR)path, ACCESS_READ);
-        if (lock != 0) {
-            unitNum = GetUnitNumFromLock(lock);
-            UnLock(lock);
-        }
-        else
-        {
-            dbg_printf("GetUnitNumFromPath : Lock failed !\n");
-        }
-    }
-    else
-    {
-        dbg_printf("GetUnitNumFromPath : NULL path !\n");
-    }
     return unitNum;
 }
 
@@ -413,11 +392,12 @@ fail:
 
 /* Do the system-friendly bit while AmigaOS is still alive. */
 static int start_unit = -1;
-static void _get_start_unit(char *path)
+static void _get_start_unit(void)
 {
-    start_unit = (GetLibraryVersion((struct Library *) DOSBase) >= 36)
-        ? GetUnitNumFromLock(GetProgramDir())
-        : GetUnitNumFromPath(path);
+    /* NB. On dos.library < v36 we can't get at the program dir or path 
+     * (libnix's argv[0] is computed from GetProgramName()). */
+    if (GetLibraryVersion((struct Library *)DOSBase) >= 36)
+        start_unit = GetUnitNumFromLock(GetProgramDir());
     if (start_unit < 0)
         start_unit = 0;
     start_unit &= 3;
@@ -1396,7 +1376,7 @@ int process_command_line(int argc, char *argv[])
         return -1;
 
     /* Find FlashFloppy/HxC drive unit. */
-    _get_start_unit(argv ? argv[0] : NULL);
+    _get_start_unit();
 
     /* If running on 68010+ VBR may be non-zero. */
     if (SysBase->AttnFlags & AFF_68010)

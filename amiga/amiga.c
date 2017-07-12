@@ -1,5 +1,4 @@
 /*
- *
  * Copyright (C) 2009-2017 Jean-François DEL NERO
  *
  * This file is part of the HxCFloppyEmulator file selector.
@@ -45,13 +44,14 @@
 #include <stdarg.h>
 
 #include "conf.h"
+#include "types.h"
 
 #include "keysfunc_defs.h"
 #include "keys_defs.h"
 #include "keymap.h"
 
 #include "hardware.h"
-#include "amiga_regs.h"
+#include "amiga_hw.h"
 
 #include "gui_utils.h"
 
@@ -135,26 +135,32 @@ struct NewScreen screen_cfg =
     (struct BitMap *)NULL  /* no special CustomBitMap */
 };
 
+static volatile struct amiga_custom * const cust =
+    (struct amiga_custom *)0xdff000;
+static volatile struct amiga_cia * const ciaa =
+    (struct amiga_cia *)0x0bfe001;
+static volatile struct amiga_cia * const ciab =
+    (struct amiga_cia *)0x0bfd000;
+
 #ifdef DEBUG
 
 void push_serial_char(unsigned char byte)
 {
-    WRITEREG_W(0xDFF032,0x1E);              //SERPER - 115200 baud/s
-
-    while (!(READREG_W(0xDFF018) & 0x2000)); //SERDATR
-
-    WRITEREG_W(0xDFF030,byte | 0x100);      //SERDAT
+    cust->serper = 0x1e; /* 115200 baud */
+    while (!(cust->serdatr & 0x2000))
+        continue;
+    cust->serdat = byte | 0x100;
 }
 
-void dbg_printf(char * chaine, ...)
+void dbg_printf(char *fmt, ...)
 {
-    unsigned char txt_buffer[1024];
+    char txt_buffer[1024];
     int i;
 
     va_list marker;
-    va_start( marker, chaine );
+    va_start(marker, fmt);
 
-    vsnprintf(txt_buffer,sizeof(txt_buffer),chaine,marker);
+    vsnprintf(txt_buffer, sizeof(txt_buffer), fmt, marker);
 
     i = 0;
     while (txt_buffer[i])
@@ -170,7 +176,7 @@ void dbg_printf(char * chaine, ...)
         i++;
     }
 
-    va_end( marker );
+    va_end(marker);
 }
 
 #else
@@ -183,38 +189,35 @@ void waitus(int centus)
 {
     unsigned short time;
 
-    WRITEREG_B(CIAB_CRA, (READREG_B(CIAB_CRA)&0xC0) | 0x08 );
-    WRITEREG_B(CIAB_ICR, 0x7F );
+    ciab->cra = (ciab->cra & 0xc0) | 0x08;
+    ciab->icr = 0x7f;
 
     time = 0x48 * centus;
-    WRITEREG_B(CIAB_TALO, time&0xFF );
-    WRITEREG_B(CIAB_TAHI, time>>8 );
+    ciab->talo = time & 0xff;
+    ciab->tahi = time >> 8;
 
-    WRITEREG_B(CIAB_CRA, READREG_B(CIAB_CRA) | 0x01 );
+    ciab->cra |= 1;
 
-    do
-    {
-    } while (!(READREG_B(CIAB_ICR)&1));
+    while (!(ciab->icr & 1))
+        continue;
 }
 
 void waitms(int ms)
 {
     int cnt;
 
-    WRITEREG_B(CIAB_CRA, (READREG_B(CIAB_CRA)&0xC0) | 0x08 );
-    WRITEREG_B(CIAB_ICR, 0x7F );
+    ciab->cra = (ciab->cra & 0xc0) | 0x08;
+    ciab->icr = 0x7f;
 
-    WRITEREG_B(CIAB_TALO, 0xCC );
-    WRITEREG_B(CIAB_TAHI, 0x02 );
+    ciab->talo = 0xcc;
+    ciab->tahi = 0x02;
 
-    WRITEREG_B(CIAB_CRA, READREG_B(CIAB_CRA) | 0x01 );
-    for (cnt=0;cnt<ms;cnt++)
-    {
-        do
-        {
-        } while (!(READREG_B(CIAB_ICR)&1));
+    ciab->cra |= 1;
 
-        WRITEREG_B(CIAB_CRA, READREG_B(CIAB_CRA) | 0x01 );
+    for (cnt = 0; cnt < ms; cnt++) {
+        while (!(ciab->icr & 1))
+            continue;
+        ciab->cra |= 1;
     }
 }
 
@@ -293,18 +296,20 @@ UWORD GetLibraryVersion(struct Library *library)
 int test_drive(int drive)
 {
     int t,j,c;
+
     Forbid();
-    WRITEREG_B(CIABPRB, ~(CIABPRB_DSKMOTOR | (CIABPRB_DSKSEL0<<(drive&3)) ));
+
+    ciab->prb = ~(CIABPRB_MTR | (CIABPRB_SEL0<<(drive&3)));
 
     waitms(100);
 
     // Jump to Track 0 ("Slow")
     t = 0;
-    while ((READREG_B(CIAAPRA) & CIAAPRA_DSKTRACK0) && (t<260))
+    while ((ciaa->pra & CIAAPRA_TK0) && (t<260))
     {
-        WRITEREG_B(CIABPRB, ~(CIABPRB_DSKMOTOR | (CIABPRB_DSKSEL0<<(drive&3))  | CIABPRB_DSKSTEP));
+        ciab->prb = ~(CIABPRB_MTR | (CIABPRB_SEL0<<(drive&3)) | CIABPRB_STEP);
         waitus(10);
-        WRITEREG_B(CIABPRB, ~(CIABPRB_DSKMOTOR | (CIABPRB_DSKSEL0<<(drive&3)) ) );
+        ciab->prb = ~(CIABPRB_MTR | (CIABPRB_SEL0<<(drive&3)));
         waitus(80);
 
         t++;
@@ -317,9 +322,9 @@ int test_drive(int drive)
     do {
         // Jump to Track 40 (Fast)
         for (j = 0; j < 40; j++) {
-            WRITEREG_B(CIABPRB, ~(CIABPRB_DSKMOTOR | (CIABPRB_DSKSEL0<<(drive&3)) | CIABPRB_DSKDIREC |CIABPRB_DSKSTEP) );
+            ciab->prb = ~(CIABPRB_MTR | (CIABPRB_SEL0<<(drive&3)) | CIABPRB_DIR |CIABPRB_STEP);
             waitus(8);
-            WRITEREG_B(CIABPRB, ~(CIABPRB_DSKMOTOR | (CIABPRB_DSKSEL0<<(drive&3)) | CIABPRB_DSKDIREC ) );
+            ciab->prb = ~(CIABPRB_MTR | (CIABPRB_SEL0<<(drive&3)) | CIABPRB_DIR);
             waitus(8);
         }
 
@@ -327,10 +332,10 @@ int test_drive(int drive)
 
         // And go back to Track 0 (Slow)
         t = 0;
-        while ((READREG_B(CIAAPRA) & CIAAPRA_DSKTRACK0) && (t < 40)) {
-            WRITEREG_B(CIABPRB, ~(CIABPRB_DSKMOTOR | (CIABPRB_DSKSEL0<<(drive&3))  | CIABPRB_DSKSTEP));
+        while ((ciaa->pra & CIAAPRA_TK0) && (t < 40)) {
+            ciab->prb = ~(CIABPRB_MTR | (CIABPRB_SEL0<<(drive&3))  | CIABPRB_STEP);
             waitus(10);
-            WRITEREG_B(CIABPRB, ~(CIABPRB_DSKMOTOR | (CIABPRB_DSKSEL0<<(drive&3)) ) );
+            ciab->prb = ~(CIABPRB_MTR | (CIABPRB_SEL0<<(drive&3)));
             waitus(80);
 
             t++;
@@ -340,13 +345,12 @@ int test_drive(int drive)
     } while ( (t != 40) && c < 2 );
 
     if (t == 40) {
-        WRITEREG_B(CIABPRB, ~(CIABPRB_DSKMOTOR | (CIABPRB_DSKSEL0<<(drive&3)) ) );
-
+        ciab->prb = ~(CIABPRB_MTR | (CIABPRB_SEL0<<(drive&3)));
         Permit();
         return 1;
     }
 
-    WRITEREG_B(CIABPRB, ~(CIABPRB_DSKMOTOR | (CIABPRB_DSKSEL0<<(drive&3)) ) );
+    ciab->prb = ~(CIABPRB_MTR | (CIABPRB_SEL0<<(drive&3)));
 
 fail:
     Permit();
@@ -385,7 +389,7 @@ int jumptotrack(unsigned char t)
     unsigned short j,k;
 
     Forbid();
-    WRITEREG_B(CIABPRB, ~(CIABPRB_DSKMOTOR | CIABPRB_DSKSEL ));
+    ciab->prb = ~(CIABPRB_MTR | CIABPRB_DSKSEL);
 
     dbg_printf("jumptotrack : %d\n",t);
 
@@ -394,12 +398,11 @@ int jumptotrack(unsigned char t)
     dbg_printf("jumptotrack %d - seek track 0...\n",t);
 
     k = 0;
-    while ((READREG_B(CIAAPRA) & CIAAPRA_DSKTRACK0) && k<1024) {
-        WRITEREG_B(CIABPRB, ~(CIABPRB_DSKMOTOR | CIABPRB_DSKSEL  | CIABPRB_DSKSTEP));
+    while ((ciaa->pra & CIAAPRA_TK0) && k<1024) {
+        ciab->prb = ~(CIABPRB_MTR | CIABPRB_DSKSEL  | CIABPRB_STEP);
         waitms(1);
-        WRITEREG_B(CIABPRB, ~(CIABPRB_DSKMOTOR | CIABPRB_DSKSEL ) );
+        ciab->prb = ~(CIABPRB_MTR | CIABPRB_DSKSEL);
         waitms(1);
-
         k++;
     }
 
@@ -407,13 +410,13 @@ int jumptotrack(unsigned char t)
         dbg_printf("jumptotrack %d - track 0 found\n",t);
 
         for (j = 0; j < t; j++) {
-            WRITEREG_B(CIABPRB, ~(CIABPRB_DSKMOTOR | CIABPRB_DSKSEL | CIABPRB_DSKDIREC |CIABPRB_DSKSTEP) );
+            ciab->prb = ~(CIABPRB_MTR | CIABPRB_DSKSEL | CIABPRB_DIR |CIABPRB_STEP);
             waitms(1);
-            WRITEREG_B(CIABPRB, ~(CIABPRB_DSKMOTOR | CIABPRB_DSKSEL | CIABPRB_DSKDIREC ) );
+            ciab->prb = ~(CIABPRB_MTR | CIABPRB_DSKSEL | CIABPRB_DIR);
             waitms(1);
         }
 
-        WRITEREG_B(CIABPRB, ~(CIABPRB_DSKMOTOR | CIABPRB_DSKSEL ) );
+        ciab->prb = ~(CIABPRB_MTR | CIABPRB_DSKSEL);
 
         dbg_printf("jumptotrack %d - jump done\n",t);
 
@@ -434,55 +437,53 @@ int waitindex(void)
 
     do{
         asm("nop");
-    } while ( (!(READREG_B(CIAB_ICR)&0x10)) && ( io_floppy_timeout < 0x200 ) );
+    } while ( (!(ciab->icr&0x10)) && ( io_floppy_timeout < 0x200 ) );
 
     do
     {
         asm("nop");
-    } while ( (READREG_B(CIAB_ICR)&0x10) && ( io_floppy_timeout < 0x200 ) );
+    } while ( (ciab->icr&0x10) && ( io_floppy_timeout < 0x200 ) );
 
     do{
         asm("nop");
-    } while ((!(READREG_B(CIAB_ICR)&0x10)) && ( io_floppy_timeout < 0x200 ) );
+    } while ((!(ciab->icr&0x10)) && ( io_floppy_timeout < 0x200 ) );
 
     return (io_floppy_timeout >= 0x200);
 }
 
 int readtrack(unsigned short * track,unsigned short size,unsigned char waiti)
 {
-    WRITEREG_B(CIABPRB,~(CIABPRB_DSKMOTOR | CIABPRB_DSKSEL));
-    WRITEREG_W( DMACON,0x8210);
+    ciab->prb = ~(CIABPRB_MTR | CIABPRB_DSKSEL);
+    cust->dmacon = 0x8210;
 
-    WRITEREG_W(INTREQ,0x0002);
+    cust->intreq = 2;
 
-    // set dsklen to 0x4000
-    WRITEREG_W( DSKLEN ,0x4000);
+    cust->dsklen = 0x4000;
 
-    WRITEREG_L( DSKPTH ,track);
+    cust->dskpt.p = track;
 
-    WRITEREG_W( ADKCON, 0x7F00);
-    WRITEREG_W( ADKCON, 0x9500); //9500
-    WRITEREG_W( DMACON, 0x8210);
-    WRITEREG_W( DSKSYNC,0x4489);
-    WRITEREG_W( INTREQ, 0x0002);
+    cust->adkcon = 0x7f00;
+    cust->adkcon = 0x9500;
+    cust->dmacon = 0x8210;
+    cust->dsksync = 0x4489;
+    cust->intreq = 2;
 
     if (waiti) {
         if (waitindex()) {
-            hxc_printf_box("ERROR: READ - No Index Timeout ! (state %d)",(READREG_B(CIAB_ICR)&0x10)>>4);
+            hxc_printf_box("ERROR: READ - No Index Timeout ! (state %d)",(ciab->icr&0x10)>>4);
             lockup();
         }
     }
 
-    //Put the value you want into the DSKLEN register
-    WRITEREG_W( DSKLEN ,size | 0x8000);
-    //Write this value again into the DSKLEN register. This actually starts the DMA.
-    WRITEREG_W( DSKLEN ,size | 0x8000);
+    cust->dsklen = size | 0x8000;
+    cust->dsklen = size | 0x8000;
 
-    while (!(READREG_W(INTREQR)&0x0002));
-    WRITEREG_W( DSKLEN ,0x4000);
-    WRITEREG_W(INTREQ,0x0002);
+    while (!(cust->intreqr & 2))
+        continue;
+    cust->dsklen = 0x4000;
+    cust->intreq = 2;
 
-    validcache=1;
+    validcache = 1;
 
     return 1;
 
@@ -490,45 +491,40 @@ int readtrack(unsigned short * track,unsigned short size,unsigned char waiti)
 
 int writetrack(unsigned short * track,unsigned short size,unsigned char waiti)
 {
+    ciab->prb = ~(CIABPRB_MTR | CIABPRB_DSKSEL);
+    cust->dmacon = 0x8210;
 
-//    while (!(READREG_W(INTREQR)&0x0002));
+    cust->intreq = 2;
 
-    WRITEREG_B(CIABPRB,~(CIABPRB_DSKMOTOR | CIABPRB_DSKSEL));
-    WRITEREG_W( DMACON,0x8210);
+    cust->dsklen = 0x4000;
 
-    WRITEREG_W(INTREQ,0x0002);
+    cust->dskpt.p = track;
 
-    // set dsklen to 0x4000
-    WRITEREG_W( DSKLEN ,0x4000);
-
-    WRITEREG_L( DSKPTH ,track);
-
-    WRITEREG_W( ADKCON, 0x7F00);
-    WRITEREG_W( ADKCON, 0xB100); //9500
-    WRITEREG_W( DMACON, 0x8210);
-    WRITEREG_W( DSKSYNC,0x4489);
-    WRITEREG_W( INTREQ, 0x0002);
+    cust->adkcon = 0x7f00;
+    cust->adkcon = 0xb100;
+    cust->dmacon = 0x8210;
+    cust->dsksync = 0x4489;
+    cust->intreq = 2;
 
     if (waiti) {
         io_floppy_timeout = 0;
-        while ( READREG_B(CIAB_ICR)&0x10 && ( io_floppy_timeout < 0x200 ) );
-        while ( !(READREG_B(CIAB_ICR)&0x10) && ( io_floppy_timeout < 0x200 ) );
+        while ( ciab->icr&0x10 && ( io_floppy_timeout < 0x200 ) );
+        while ( !(ciab->icr&0x10) && ( io_floppy_timeout < 0x200 ) );
         if (!( io_floppy_timeout < 0x200 )) {
-            hxc_printf_box("ERROR: WRITE - No Index Timeout ! (state %d)",(READREG_B(CIAB_ICR)&0x10)>>4);
+            hxc_printf_box("ERROR: WRITE - No Index Timeout ! (state %d)",(ciab->icr&0x10)>>4);
             lockup();
         }
     }
 
-    //Put the value you want into the DSKLEN register
-    WRITEREG_W( DSKLEN ,size | 0x8000 | 0x4000 );
-    //Write this value again into the DSKLEN register. This actually starts the DMA.
-    WRITEREG_W( DSKLEN ,size | 0x8000 | 0x4000 );
+    cust->dsklen = size | 0xc000;
+    cust->dsklen = size | 0xc000;
 
-    while (!(READREG_W(INTREQR)&0x0002));
-    WRITEREG_W( DSKLEN ,0x4000);
-    WRITEREG_W(INTREQ,0x0002);
+    while (!(cust->intreqr & 2))
+        continue;
+    cust->dsklen = 0x4000;
+    cust->intreq = 2;
 
-    validcache=0;
+    validcache = 0;
 
     return 1;
 }
@@ -860,7 +856,7 @@ void init_fdc(int drive)
 
     dbg_printf("init_fdc\n");
 
-    CIABPRB_DSKSEL = CIABPRB_DSKSEL0 << (drive&3);
+    CIABPRB_DSKSEL = CIABPRB_SEL0 << (drive&3);
 
     validcache=0;
 
@@ -891,8 +887,8 @@ void init_fdc(int drive)
 
     Forbid();
 
-    WRITEREG_B(CIABPRB,~(CIABPRB_DSKMOTOR | CIABPRB_DSKSEL));
-    WRITEREG_W( DMACON,0x8210);
+    ciab->prb = ~(CIABPRB_MTR | CIABPRB_DSKSEL);
+    cust->dmacon = 0x8210;
 
     if (jumptotrack(255)) {
         Permit();
@@ -900,7 +896,7 @@ void init_fdc(int drive)
         lockup();
     }
     Delay(12);
-    WRITEREG_W(INTREQ,0x0002);
+    cust->intreq = 2;
 
     Permit();
 }
@@ -915,9 +911,8 @@ static unsigned char Joystick(void)
     unsigned char bcode;
     unsigned char ret;
 
-    /* Get a copy of the SDR value and invert it: */
-    code = READREG_W(0xDFF00C);
-    bcode = READREG_B(CIAAPRA);
+    code = cust->joy1dat;
+    bcode = ciaa->pra;
 
     ret=0;
     if ( (code&0x100) ^ ((code&0x200)>>1) ) // Forward
@@ -952,7 +947,7 @@ static unsigned char Keyboard(void)
     unsigned char code;
 
     /* Get a copy of the SDR value and invert it: */
-    code = READREG_B(0xBFEC01) ^ 0xFF;
+    code = ~ciaa->sdr;
 
     /* Shift all bits one step to the right, and put the bit that is */
     /* pushed out last: 76543210 -> 07654321                         */
@@ -1155,11 +1150,11 @@ unsigned short get_vid_mode(void)
 
     Forbid();
     do {
-        vpos = READREG_W(VHPOSR) >> 8;
-        while (vpos == (READREG_W(VHPOSR) >> 8))
+        vpos = cust->vhposr >> 8;
+        while (vpos == (cust->vhposr >> 8))
             continue;
 
-        vpos = ((READREG_W(VPOSR)&1)<<8) | (READREG_W(VHPOSR)>>8);
+        vpos = ((cust->vposr&1)<<8) | (cust->vhposr>>8);
         if (vpos >= vpos2)
             vpos2 = vpos;
     } while (vpos >= vpos2);
@@ -1169,7 +1164,7 @@ unsigned short get_vid_mode(void)
 
 void disablemousepointer(void)
 {
-    WRITEREG_W( DMACON ,0x20);
+    cust->dmacon = 0x20;
 }
 
 unsigned char set_color_scheme(unsigned char color)

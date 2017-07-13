@@ -1,25 +1,29 @@
-/*
+/* 
+ * Modifications for the FlashFloppy project:
+ * Copyright (c) 2017 Keir Fraser
+ * 
+ * Original HxC version:
  * Copyright (C) 2009-2017 Jean-François DEL NERO
  *
- * This file is part of the HxCFloppyEmulator file selector.
+ * This file is part of the FlashFloppy file selector.
  *
- * HxCFloppyEmulator file selector may be used and distributed without
+ * FlashFloppy file selector may be used and distributed without
  * restriction provided that this copyright statement is not removed from the
  * file and that any derivative work contains the original copyright notice and
  * the associated disclaimer.
  *
- * HxCFloppyEmulator file selector is free software; you can redistribute it
+ * FlashFloppy file selector is free software; you can redistribute it
  * and/or modify  it under the terms of the GNU General Public License as 
  * published by the Free Software Foundation; either version 2 of the License, 
  * or (at your option) any later version.
  *
- * HxCFloppyEmulator file selector is distributed in the hope that it will be
+ * FlashFloppy file selector is distributed in the hope that it will be
  * useful, but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *   See the GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License along 
- * with HxCFloppyEmulator file selector; if not, write to the Free Software
+ * with FlashFloppy file selector; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
@@ -1203,3 +1207,13 @@ int process_command_line(int argc, char *argv[])
 
     return 0;
 }
+
+/*
+ * Local variables:
+ * mode: C
+ * c-file-style: "Linux"
+ * c-basic-offset: 4
+ * tab-width: 4
+ * indent-tabs-mode: nil
+ * End:
+ */

@@ -4,10 +4,10 @@
  * M680x0 processor definitions.
  * 
  * Written & released by Keir Fraser <keir.xen@gmail.com>
- * 
- * This is free and unencumbered software released into the public domain.
- * See the file COPYING for more details, or visit <http://unlicense.org>.
  */
+
+#ifndef __AMIGA_M68K_H__
+#define __AMIGA_M68K_H__
 
 typedef union {
     void *p;
@@ -53,3 +53,15 @@ struct c_exception_frame {
     uint16_t sr;
     uint32_t pc;
 };
+
+#endif /* __AMIGA_M68K_H__ */
+
+/*
+ * Local variables:
+ * mode: C
+ * c-file-style: "Linux"
+ * c-basic-offset: 4
+ * tab-width: 4
+ * indent-tabs-mode: nil
+ * End:
+ */

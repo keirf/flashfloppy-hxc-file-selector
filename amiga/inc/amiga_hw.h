@@ -4,10 +4,10 @@
  * Register definitions.
  * 
  * Written & released by Keir Fraser <keir.xen@gmail.com>
- * 
- * This is free and unencumbered software released into the public domain.
- * See the file COPYING for more details, or visit <http://unlicense.org>.
  */
+
+#ifndef __AMIGA_AMIGA_HW__
+#define __AMIGA_AMIGA_HW__
 
 typedef union {
     void *p;
@@ -250,6 +250,8 @@ struct amiga_cia {
 #define INT_CIAB   0x2000
 #define INT_INTEN  0x4000
 #define INT_SETCLR 0x8000
+
+#endif /* __AMIGA_AMIGA_HW__ */
 
 /*
  * Local variables:

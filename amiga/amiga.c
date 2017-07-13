@@ -80,8 +80,6 @@ static unsigned char validcache;
 #define MAX_CACHE_SECTOR 16
 unsigned short sector_pos[MAX_CACHE_SECTOR];
 
-unsigned char keyup;
-
 extern struct DosLibrary *DOSBase;
 
 #if __GNUC__ < 3
@@ -905,80 +903,79 @@ void init_fdc(int drive)
 
 static unsigned char Joystick(void)
 {
-    unsigned short code;
-    unsigned char bcode;
-    unsigned char ret;
+    unsigned short code = cust->joy1dat;
+    unsigned char bcode = ciaa->pra;
+    unsigned char ret = 0;
 
-    code = cust->joy1dat;
-    bcode = ciaa->pra;
+    if ( (code&0x100) ^ ((code&0x200)>>1) ) /* Up */
+        ret |= 1;
+    if ( ((code&0x200)) )  /* Left */
+        ret |= 8;
+    if ( (code&0x1) ^ ((code&0x2)>>1) ) /* Down */
+        ret |= 2;
+    if ( ((code&0x002)) )  /* Right */
+        ret |= 4;
+    if (!(bcode&0x80)) /* Fire */
+        ret |= 0x10;
 
-    ret=0;
-    if ( (code&0x100) ^ ((code&0x200)>>1) ) // Forward
-    {
-        ret=ret| 0x1;
-    }
-    if ( ((code&0x200)) )  // Left
-    {
-        ret=ret| 0x8;
-    }
-
-    if ( (code&0x1) ^ ((code&0x2)>>1) ) // Back
-    {
-        ret=ret| 0x2;
-    }
-
-    if ( ((code&0x002)) )  // Right
-    {
-        ret=ret| 0x4;
-    }
-
-    if (!(bcode&0x80))
-    {
-        ret=ret| 0x10;
-    }
-
-    return( ret );
+    return ret;
 }
 
-static unsigned char Keyboard(void)
+static volatile uint8_t key_buffer = 0x80;
+static void keyboard_IRQ(void)
 {
-    unsigned char code;
+    uint16_t t_s;
+    uint8_t keycode;
 
-    /* Get a copy of the SDR value and invert it: */
-    code = ~ciaa->sdr;
+    /* Grab the keycode and begin handshake. */
+    keycode = ~ciaa->sdr;
+    ciaa->cra |= CIACRA_SPMODE; /* start the handshake */
+    t_s = get_ciaatb();
 
-    /* Shift all bits one step to the right, and put the bit that is */
-    /* pushed out last: 76543210 -> 07654321                         */
-    code = code & 0x01 ? (code>>1)+0x80 : code>>1;
+    /* Decode the keycode. */
+    key_buffer = (keycode >> 1) | (keycode << 7); /* ROR 1 */
 
-    /* Return the Raw Key Code Value: */
-    return( code );
+    /* Wait to finish handshake over the serial line. We wait for 65 CIA ticks,
+     * which is approx 90us: Longer than the 85us minimum dictated by the
+     * HRM. */
+    while ((uint16_t)(t_s - get_ciaatb()) < 65)
+        continue;
+    ciaa->cra &= ~CIACRA_SPMODE; /* finish the handshake */
+}
+
+IRQ(CIAA_IRQ);
+static void c_CIAA_IRQ(void)
+{
+    uint8_t icr = ciaa->icr;
+
+    if (icr & CIAICR_SERIAL)
+        keyboard_IRQ();
+
+    /* NB. Clear intreq.ciaa *after* reading/clearing ciaa.icr else we get a 
+     * spurious extra interrupt, since intreq.ciaa latches the level of CIAA 
+     * INT and hence would simply become set again immediately after we clear 
+     * it. For this same reason (latches level not edge) it is *not* racey to 
+     * clear intreq.ciaa second. Indeed AmigaOS does the same (checked 
+     * Kickstart 3.1). */
+    IRQ_RESET(INT_CIAA);
 }
 
 void flush_char(void)
 {
+    key_buffer = 0x80;
 }
 
 unsigned char get_char(void)
 {
-    unsigned char key, i, c;
+    unsigned char i, key;
     unsigned char function_code, key_code;
 
     function_code = FCT_NO_FUNCTION;
-    while (!(Keyboard()&0x80))
-        continue;
 
-    do {
-        c = 1;
-        do {
-            do {
-                key = Keyboard();
-                if (key & 0x80)
-                   c=1;
-            } while (key & 0x80);
-            delay_ms(55);
-            c--;
-        } while (c);
+    while (function_code == FCT_NO_FUNCTION) {
+        while ((key = key_buffer) & 0x80)
+            continue;
+        key_buffer = 0x80;
 
         i = 0;
         do {
@@ -986,8 +983,7 @@ unsigned char get_char(void)
             key_code = char_keysmap[i].keyboard_code;
             i++;
         } while ((key_code!=key) && (function_code!=FCT_NO_FUNCTION));
-
-    } while (function_code==FCT_NO_FUNCTION);
+    }
 
     return function_code;
 }
@@ -995,32 +991,30 @@ unsigned char get_char(void)
 
 unsigned char wait_function_key(void)
 {
-    unsigned char key, joy, i, c;
+    static unsigned char keyup;
+    unsigned char joy, i, key;
     unsigned char function_code, key_code;
 
     function_code = FCT_NO_FUNCTION;
 
-    if (keyup == 1)
-        delay_ms(250);
+    key = key_buffer;
+    joy = Joystick();
+    if ((key & 0x80) && !joy)
+        keyup = 2;
 
-    do {
-        c = 1;
-        do {
-            do {
-                key=Keyboard();
-                joy=Joystick();
-                if ((key & 0x80) && !joy)
-                {
-                    c = 1;
-                    keyup = 2;
-                }
-            } while ((key & 0x80) && !joy);
+    /* If we are starting a key/joy repeat, delay a little longer before 
+     * starting the repeat. */
+    if (keyup == 1) {
+        i = 0;
+        /* Abort the delay if key-state changes. */
+        while ((key == key_buffer) && (joy == Joystick()) && (i++ < 50))
+            delay_ms(5);
+    }
 
-            delay_ms(55);
-
-            c--;
-
-        } while (c);
+    while (function_code == FCT_NO_FUNCTION) {
+        while (((key = key_buffer) & 0x80) && !(joy = Joystick()))
+            keyup = 2;
+        delay_ms(55);
 
         if (keyup)
             keyup--;
@@ -1041,14 +1035,13 @@ unsigned char wait_function_key(void)
                 return FCT_LEFT_KEY;
         }
 
-        i=0;
+        i = 0;
         do {
             function_code = keysmap[i].function_code;
             key_code = keysmap[i].keyboard_code;
             i++;
         } while ((key_code!=key) && (function_code!=FCT_NO_FUNCTION) );
-
-    } while (function_code==FCT_NO_FUNCTION);
+    }
 
     return function_code;
 }
@@ -1061,14 +1054,8 @@ unsigned char wait_function_key(void)
 static uint8_t vbl_hz;
 
 /* Display size and depth. */
-#define xres    640
-#define yres    256
-#define bplsz   (yres*xres/8)
+#define bplsz   (640*256/8)
 #define planes  2
-
-/* Top-left coordinates of the display. */
-#define diwstrt_h 0x81
-#define diwstrt_v 0x46
 
 static uint16_t *copper;
 
@@ -1144,11 +1131,13 @@ static void take_over_system(void)
 IRQ(VBLANK_IRQ);
 static void c_VBLANK_IRQ(void)
 {
+    uint16_t cur16 = get_ciaatb();
+
     vblank_count++;
     io_floppy_timeout++;
 
-    if ((Keyboard() & 0x80) && !Joystick())
-        keyup = 2;
+    stamp32 -= (uint16_t)(stamp16 - cur16);
+    stamp16 = cur16;
 
     IRQ_RESET(INT_VBLANK);
 }
@@ -1156,6 +1145,8 @@ static void c_VBLANK_IRQ(void)
 int init_display(void)
 {
     static const uint16_t static_copper[] = {
+        0x008e, 0x2c81, /* diwstrt */
+        0x0090, 0x2cc1, /* diwstop */
         0x0092, 0x003c, /* ddfstrt */
         0x0094, 0x00d4, /* ddfstop */
         0x0100, 0xa200, /* bplcon0 */
@@ -1184,18 +1175,15 @@ int init_display(void)
         *p++ = 0xe2 + i*4; /* bplxptl */
         *p++ = (uint16_t)bpl;
     }
-    *p++ = 0x008e; /* diwstrt */
-    *p++ = (diwstrt_v << 8) | diwstrt_h;
-    *p++ = 0x0090; /* diwstop */
-    *p++ = (((diwstrt_v+yres) & 0xFF) << 8) | ((diwstrt_h+xres/2) & 0xFF);
     memcpy(p, (uint16_t *)static_copper, sizeof(static_copper));
     cust->cop1lc.p = copper;
 
     m68k_vec->level3_autovector.p = VBLANK_IRQ;
+    m68k_vec->level2_autovector.p = CIAA_IRQ;
 
     wait_bos();
     cust->dmacon = DMA_SETCLR | DMA_COPEN | DMA_DSKEN;
-    cust->intena = INT_SETCLR | INT_VBLANK;
+    cust->intena = INT_SETCLR | INT_CIAA | INT_VBLANK;
 
     /* Detect our hardware environment. */
     vbl_hz = detect_vbl_hz();
@@ -1209,8 +1197,7 @@ int init_display(void)
         /* Modify copper with correct DIWSTOP for NTSC. */
         for (p = copper; *p != 0x90; p += 2)
             continue;
-        p[1] = (((diwstrt_v+SCREEN_YRESOL) & 0xFF) << 8)
-            | ((diwstrt_h+xres/2) & 0xFF);
+        p[1] = 0xf4c1;
     }
 
     /* Make sure the copper has run once through, then enable bitplane DMA. */

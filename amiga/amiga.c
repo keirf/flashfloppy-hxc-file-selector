@@ -24,63 +24,47 @@
  */
 
 #include <exec/execbase.h>
-
 #include <proto/exec.h>
 #include <proto/dos.h>
 
 #include <string.h>
 #include <stdarg.h>
 #include <stddef.h>
+#include <stdio.h>
 
 #include "conf.h"
 #include "types.h"
-
 #include "keysfunc_defs.h"
 #include "keys_defs.h"
 #include "keymap.h"
-
 #include "hardware.h"
 #include "amiga_hw.h"
 #include "m68k.h"
-
 #include "gui_utils.h"
-
 #include "reboot.h"
-
 #include "crc.h"
-
 #include "color_table.h"
 #include "mfm_table.h"
 
-#define DEPTH    2 /* 1 BitPlanes should be used, gives eight colours. */
-#define COLOURS  2 /* 2^1 = 2                                          */
-
-static volatile unsigned short io_floppy_timeout;
-
-unsigned char * screen_buffer;
-unsigned char * screen_buffer_backup;
+unsigned char *screen_buffer;
+unsigned char *screen_buffer_backup;
 unsigned short SCREEN_XRESOL;
 unsigned short SCREEN_YRESOL;
 
-static unsigned char CIABPRB_DSKSEL;
-
-static unsigned char * mfmtobinLUT_L;
-static unsigned char * mfmtobinLUT_H;
-
-#define MFMTOBIN(W) ( mfmtobinLUT_H[W>>8] | mfmtobinLUT_L[W&0xFF] )
+static unsigned char *mfmtobinLUT_L;
+static unsigned char *mfmtobinLUT_H;
+#define MFMTOBIN(W) (mfmtobinLUT_H[W>>8] | mfmtobinLUT_L[W&0xFF])
 
 #define RD_TRACK_BUFFER_SIZE 10*1024
 #define WR_TRACK_BUFFER_SIZE 600
 
-static unsigned short * track_buffer_rd;
-static unsigned short * track_buffer_wr;
+static unsigned short *track_buffer_rd;
+static unsigned short *track_buffer_wr;
 
 static unsigned char validcache;
 
 #define MAX_CACHE_SECTOR 16
 unsigned short sector_pos[MAX_CACHE_SECTOR];
-
-extern struct DosLibrary *DOSBase;
 
 #if __GNUC__ < 3
 #define attribute_used __attribute__((unused))
@@ -92,33 +76,12 @@ extern struct DosLibrary *DOSBase;
 #define unlikely(x) __builtin_expect((x),0)
 #endif
 
-#define barrier() asm volatile("" ::: "memory")
-
-#ifndef offsetof
-#define offsetof(a,b) __builtin_offsetof(a,b)
-#endif
-#define container_of(ptr, type, member) ({                      \
-        typeof( ((type *)0)->member ) *__mptr = (ptr);          \
-        (type *)( (char *)__mptr - offsetof(type,member) );})
-#define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
-
 /* Write to INTREQ twice at end of ISR to prevent spurious re-entry on 
  * A4000 with faster processors (040/060). */
 #define IRQ_RESET(x) do {                       \
     uint16_t __x = (x);                         \
     cust->intreq = __x;                         \
     cust->intreq = __x;                         \
-} while (0)
-/* Similarly for disabling an IRQ, write INTENA twice to be sure that an 
- * interrupt won't creep in after the IRQ_DISABLE(). */
-#define IRQ_DISABLE(x) do {                     \
-    uint16_t __x = (x);                         \
-    cust->intena = __x;                         \
-    cust->intena = __x;                         \
-} while (0)
-#define IRQ_ENABLE(x) do {                      \
-    uint16_t __x = INT_SETCLR | (x);            \
-    cust->intena = __x;                         \
 } while (0)
 
 #define IRQ(name)                               \
@@ -169,7 +132,7 @@ static uint32_t div32(uint32_t dividend, uint16_t divisor)
 
 #ifdef DEBUG
 
-void push_serial_char(unsigned char byte)
+static void push_serial_char(unsigned char byte)
 {
     cust->serper = 0x1e; /* 115200 baud */
     while (!(cust->serdatr & 0x2000))
@@ -187,18 +150,10 @@ void dbg_printf(char *fmt, ...)
 
     vsnprintf(txt_buffer, sizeof(txt_buffer), fmt, marker);
 
-    i = 0;
-    while (txt_buffer[i])
-    {
+    for (i = 0; txt_buffer[i]; i++) {
         if (txt_buffer[i] == '\n')
-        {
             push_serial_char('\r');
-            push_serial_char('\n');
-        }
-        else
-            push_serial_char(txt_buffer[i]);
-
-        i++;
+        push_serial_char(txt_buffer[i]);
     }
 
     va_end(marker);
@@ -300,11 +255,45 @@ void lockup()
  *                              FDC I/O
  ****************************************************************************/
 
+/* CIAB IRQ: FLAG (disk index) pulse counter. */
+static volatile unsigned int disk_index_count;
+
+IRQ(CIAB_IRQ);
+static void c_CIAB_IRQ(void)
+{
+    uint8_t icr = ciab->icr;
+
+    if (icr & CIAICR_FLAG)
+        disk_index_count++;
+
+    /* NB. Clear intreq.ciab *after* reading/clearing ciab.icr else we get a 
+     * spurious extra interrupt, since intreq.ciab latches the level of CIAB 
+     * INT and hence would simply become set again immediately after we clear 
+     * it. For this same reason (latches level not edge) it is *not* racey to 
+     * clear intreq.ciab second. Indeed AmigaOS does the same (checked 
+     * Kickstart 3.1). */
+    IRQ_RESET(INT_CIAB);
+}
+
+static void drive_deselect(void)
+{
+    ciab->prb |= 0xf9; /* motor-off, deselect all */
+}
+
+/* Select @drv and set motor on or off. */
+static void drive_select(unsigned int drv, int on)
+{
+    drive_deselect(); /* motor-off, deselect all */
+    if (on)
+        ciab->prb &= ~CIABPRB_MTR; /* motor-on */
+    ciab->prb &= ~(CIABPRB_SEL0 << drv); /* select drv */
+}
+
 /*
  * Returns the unit number of the underlying device of a filesystem lock.
  * Returns -1 on failure.
  */
-LONG GetUnitNumFromLock(BPTR lock)
+static LONG GetUnitNumFromLock(BPTR lock)
 {
     LONG unitNum = -1;
 
@@ -321,71 +310,30 @@ LONG GetUnitNumFromLock(BPTR lock)
     return unitNum;
 }
 
-UWORD GetLibraryVersion(struct Library *library)
+static UWORD GetLibraryVersion(struct Library *library)
 {
     dbg_printf("GetLibraryVersion : %d\n",library->lib_Version);
 
     return library->lib_Version;
 }
 
-int test_drive(int drive)
+static bool_t test_drive(int drive)
 {
-    int t,j,c;
-
-    ciab->prb = ~(CIABPRB_MTR | (CIABPRB_SEL0<<(drive&3)));
+    bool_t is_emulated_unit;
 
     delay_ms(100);
+    drive_select(drive, 1);
+    delay_us(10);
 
-    // Jump to Track 0 ("Slow")
-    t = 0;
-    while ((ciaa->pra & CIAAPRA_TK0) && (t<260))
-    {
-        ciab->prb = ~(CIABPRB_MTR | (CIABPRB_SEL0<<(drive&3)) | CIABPRB_STEP);
-        delay_us(10);
-        ciab->prb = ~(CIABPRB_MTR | (CIABPRB_SEL0<<(drive&3)));
-        delay_us(80);
+    /* We let the motor spin down and then re-enable the motor and 
+     * almost immediately check if the drive is READY. A real mechanical 
+     * drive will need to time to spin back up. */
+    is_emulated_unit = !(ciaa->pra & CIAAPRA_RDY);
 
-        t++;
-    }
+    drive_select(drive, 0);
+    drive_deselect();
 
-    if (t >= 260)
-        goto fail;
-
-    c = 0;
-    do {
-        // Jump to Track 40 (Fast)
-        for (j = 0; j < 40; j++) {
-            ciab->prb = ~(CIABPRB_MTR | (CIABPRB_SEL0<<(drive&3)) | CIABPRB_DIR |CIABPRB_STEP);
-            delay_us(8);
-            ciab->prb = ~(CIABPRB_MTR | (CIABPRB_SEL0<<(drive&3)) | CIABPRB_DIR);
-            delay_us(8);
-        }
-
-        delay_us(200);
-
-        // And go back to Track 0 (Slow)
-        t = 0;
-        while ((ciaa->pra & CIAAPRA_TK0) && (t < 40)) {
-            ciab->prb = ~(CIABPRB_MTR | (CIABPRB_SEL0<<(drive&3))  | CIABPRB_STEP);
-            delay_us(10);
-            ciab->prb = ~(CIABPRB_MTR | (CIABPRB_SEL0<<(drive&3)));
-            delay_us(80);
-
-            t++;
-        }
-
-        c++;
-    } while ( (t != 40) && c < 2 );
-
-    if (t == 40) {
-        ciab->prb = ~(CIABPRB_MTR | (CIABPRB_SEL0<<(drive&3)));
-        return 1;
-    }
-
-    ciab->prb = ~(CIABPRB_MTR | (CIABPRB_SEL0<<(drive&3)));
-
-fail:
-    return 0;
+    return is_emulated_unit;
 }
 
 /* Do the system-friendly bit while AmigaOS is still alive. */
@@ -422,176 +370,105 @@ int get_start_unit(char *path)
 
 int jumptotrack(unsigned char t)
 {
-    unsigned short j,k;
-
-    ciab->prb = ~(CIABPRB_MTR | CIABPRB_DSKSEL);
-
-    dbg_printf("jumptotrack : %d\n",t);
-
-    delay_ms(100);
+    unsigned int steps = 0;
 
     dbg_printf("jumptotrack %d - seek track 0...\n",t);
 
-    k = 0;
-    while ((ciaa->pra & CIAAPRA_TK0) && k<1024) {
-        ciab->prb = ~(CIABPRB_MTR | CIABPRB_DSKSEL  | CIABPRB_STEP);
-        delay_ms(1);
-        ciab->prb = ~(CIABPRB_MTR | CIABPRB_DSKSEL);
-        delay_ms(1);
-        k++;
-    }
-
-    if (k < 1024) {
-        dbg_printf("jumptotrack %d - track 0 found\n",t);
-
-        for (j = 0; j < t; j++) {
-            ciab->prb = ~(CIABPRB_MTR | CIABPRB_DSKSEL | CIABPRB_DIR |CIABPRB_STEP);
-            delay_ms(1);
-            ciab->prb = ~(CIABPRB_MTR | CIABPRB_DSKSEL | CIABPRB_DIR);
-            delay_ms(1);
+    ciab->prb |= CIABPRB_DIR; /* outward */
+    delay_ms(18);
+    while (!(~ciaa->pra & CIAAPRA_TK0) && (steps++ < 1024)) {
+        ciab->prb &= ~CIABPRB_STEP;
+        ciab->prb |= CIABPRB_STEP;
+        delay_ms(3);
+        if (steps++ >= 1024) {
+            dbg_printf("jumptotrack %d - track 0 not found!!\n",t);
+            return 1;
         }
-
-        ciab->prb = ~(CIABPRB_MTR | CIABPRB_DSKSEL);
-
-        dbg_printf("jumptotrack %d - jump done\n",t);
-
-        return 0;
     }
+    delay_ms(15);
 
-    dbg_printf("jumptotrack %d - track 0 not found!!\n",t);
-    return 1;
+    dbg_printf("jumptotrack %d - track 0 found\n",t);
+
+    ciab->prb &= ~CIABPRB_DIR; /* inward */
+    while (t--) {
+        ciab->prb &= ~CIABPRB_STEP;
+        ciab->prb |= CIABPRB_STEP;
+        delay_ms(3);
+    }
+    delay_ms(15);
+
+    dbg_printf("jumptotrack %d - jump done\n",t);
+
+    return 0;
 };
 
-int waitindex(void)
+static bool_t disk_wait_dma(void)
 {
-    io_floppy_timeout = 0;
-
-    do{
-        asm("nop");
-    } while ( (!(ciab->icr&0x10)) && ( io_floppy_timeout < 0x200 ) );
-
-    do
-    {
-        asm("nop");
-    } while ( (ciab->icr&0x10) && ( io_floppy_timeout < 0x200 ) );
-
-    do{
-        asm("nop");
-    } while ((!(ciab->icr&0x10)) && ( io_floppy_timeout < 0x200 ) );
-
-    return (io_floppy_timeout >= 0x200);
+    unsigned int i;
+    for (i = 0; i < 1000; i++) {
+        if (cust->intreqr & INT_DSKBLK) /* dsk-blk-done? */
+            break;
+        delay_ms(1);
+    }
+    cust->dsklen = 0x4000; /* no more dma */
+    return (i < 1000);
 }
 
-int readtrack(unsigned short * track,unsigned short size,unsigned char waiti)
+static int readtrack(unsigned short *track, unsigned short size)
 {
-    ciab->prb = ~(CIABPRB_MTR | CIABPRB_DSKSEL);
-    cust->dmacon = 0x8210;
-
-    cust->intreq = 2;
-
-    cust->dsklen = 0x4000;
-
     cust->dskpt.p = track;
-
-    cust->adkcon = 0x7f00;
-    cust->adkcon = 0x9500;
-    cust->dmacon = 0x8210;
-    cust->dsksync = 0x4489;
-    cust->intreq = 2;
-
-    if (waiti) {
-        if (waitindex()) {
-            hxc_printf_box("ERROR: READ - No Index Timeout ! (state %d)",(ciab->icr&0x10)>>4);
-            lockup();
-        }
-    }
+    cust->adkcon = 0x7f00; /* clear disk flags */
+    cust->intreq = INT_DSKBLK; /* clear dsk-blk-done */
+    cust->adkcon = 0x9500; /* MFM, wordsync */
+    cust->dsksync = 0x4489; /* sync 4489 */
 
     cust->dsklen = size | 0x8000;
     cust->dsklen = size | 0x8000;
 
-    while (!(cust->intreqr & 2))
-        continue;
-    cust->dsklen = 0x4000;
-    cust->intreq = 2;
-
-    validcache = 1;
-
-    return 1;
-
+    return disk_wait_dma();
 }
 
-int writetrack(unsigned short * track,unsigned short size,unsigned char waiti)
+static int writetrack(unsigned short *track, unsigned short size)
 {
-    ciab->prb = ~(CIABPRB_MTR | CIABPRB_DSKSEL);
-    cust->dmacon = 0x8210;
-
-    cust->intreq = 2;
-
-    cust->dsklen = 0x4000;
-
     cust->dskpt.p = track;
-
-    cust->adkcon = 0x7f00;
-    cust->adkcon = 0xb100;
-    cust->dmacon = 0x8210;
-    cust->dsksync = 0x4489;
-    cust->intreq = 2;
-
-    if (waiti) {
-        io_floppy_timeout = 0;
-        while ( ciab->icr&0x10 && ( io_floppy_timeout < 0x200 ) );
-        while ( !(ciab->icr&0x10) && ( io_floppy_timeout < 0x200 ) );
-        if (!( io_floppy_timeout < 0x200 )) {
-            hxc_printf_box("ERROR: WRITE - No Index Timeout ! (state %d)",(ciab->icr&0x10)>>4);
-            lockup();
-        }
-    }
+    cust->adkcon = 0x7f00; /* clear disk flags */
+    cust->intreq = INT_DSKBLK; /* clear dsk-blk-done */
+    cust->adkcon = 0xb100; /* MFM, no wordsync, precomp */
 
     cust->dsklen = size | 0xc000;
     cust->dsklen = size | 0xc000;
 
-    while (!(cust->intreqr & 2))
-        continue;
-    cust->dsklen = 0x4000;
-    cust->intreq = 2;
-
-    validcache = 0;
-
-    return 1;
+    return disk_wait_dma();
 }
 
-// Fast Bin to MFM converter
-int BuildCylinder(unsigned char * mfm_buffer,int mfm_size,unsigned char * track_data,int track_size,unsigned short lastbit,unsigned short * retlastbit)
+/* Fast Bin to MFM converter */
+static void BuildCylinder(
+    void *mfm_buffer, void *track_data, int size, unsigned short *p_lastbit)
 {
-    int i,l;
     unsigned char byte;
     unsigned short mfm_code;
+    unsigned char *in = track_data;
+    unsigned char *out = mfm_buffer;
+    unsigned short lastbit = *p_lastbit;
 
-    if (track_size*2>mfm_size)
-        track_size = mfm_size/2;
-
-    // MFM Encoding
-    i=0;
-    for (l = 0; l < track_size; l++) {
-        byte =track_data[l];
+    /* MFM Encoding */
+    while (size--) {
+        byte = *in++;
 
         mfm_code = MFM_tab[byte] & lastbit;
 
-        mfm_buffer[i++]=mfm_code>>8;
-        mfm_buffer[i++]=mfm_code&0xFF;
+        *out++ = (uint8_t)(mfm_code >> 8);
+        *out++ = (uint8_t)mfm_code;
 
-        lastbit=~(MFM_tab[byte]<<15);
+        lastbit = ~(MFM_tab[byte] << 15);
     }
 
-    if (retlastbit)
-        *retlastbit = lastbit;
-
-    return track_size;
+    *p_lastbit = lastbit;
 }
 
-unsigned char writesector(unsigned char sectornum,unsigned char * data)
+unsigned char writesector(unsigned char sectornum, unsigned char *data)
 {
-    unsigned short i, j, len, retry, retry2, lastbit;
+    unsigned short i, j, mfm_len, retry, retry2, lastbit;
     unsigned char sectorfound;
     unsigned char c;
     unsigned char CRC16_High, CRC16_Low, byte;
@@ -599,271 +476,237 @@ unsigned char writesector(unsigned char sectornum,unsigned char * data)
 
     dbg_printf("writesector : %d\n",sectornum);
 
-    retry2 = 2;
-
     i = 0;
     validcache = 0;
 
-    // Preparing the buffer...
+    /* Calculate the data CRC. */
     CRC16_Init(&CRC16_High, &CRC16_Low);
     for (j = 0; j < 3; j++)
-        CRC16_Update(&CRC16_High,&CRC16_Low,0xA1);
-
-    CRC16_Update(&CRC16_High,&CRC16_Low,0xFB);
-
+        CRC16_Update(&CRC16_High, &CRC16_Low, 0xA1); /* sync */
+    CRC16_Update(&CRC16_High, &CRC16_Low, 0xFB); /* DAM */
     for (j = 0; j < 512; j++)
-        CRC16_Update(&CRC16_High,&CRC16_Low,data[j]);
+        CRC16_Update(&CRC16_High, &CRC16_Low, data[j]); /* data */
 
+    /* MFM: pre-gap */
     for (j = 0; j < 12; j++)
         track_buffer_wr[i++]=0xAAAA;
-
+    /* MFM: sync */
     track_buffer_wr[i++]=0x4489;
     track_buffer_wr[i++]=0x4489;
     track_buffer_wr[i++]=0x4489;
     lastbit = 0x7FFF;
+    /* MFM: Data Address Mark (0xFB). */
     byte = 0xFB;
-    BuildCylinder((unsigned char*)&track_buffer_wr[i++],1*2,&byte,1,lastbit,&lastbit);
-    BuildCylinder((unsigned char*)&track_buffer_wr[i],512*2,data,512,lastbit,&lastbit);
+    BuildCylinder(&track_buffer_wr[i++], &byte, 1, &lastbit);
+    /* MFM: 512 bytes data. */
+    BuildCylinder(&track_buffer_wr[i], data, 512, &lastbit);
     i += 512;
-    BuildCylinder((unsigned char*)&track_buffer_wr[i++],1*2,&CRC16_High,1,lastbit,&lastbit);
-    BuildCylinder((unsigned char*)&track_buffer_wr[i++],1*2,&CRC16_Low,1,lastbit,&lastbit);
+    /* MFM: CRC. */
+    BuildCylinder(&track_buffer_wr[i++], &CRC16_High, 1, &lastbit);
+    BuildCylinder(&track_buffer_wr[i++], &CRC16_Low, 1, &lastbit);
+    /* MFM: post-gap. */
     byte = 0x4E;
     for (j = 0; j < 4; j++)
-        BuildCylinder((unsigned char*)&track_buffer_wr[i++],1*2,&byte,1,lastbit,&lastbit);
+        BuildCylinder(&track_buffer_wr[i++], &byte, 1, &lastbit);
 
-    len = i;
+    mfm_len = i;
 
-
-    // Looking for/waiting the sector to write...
-
-    sector_header[0]=0xFF;
-    sector_header[1]=0x00;
-    sector_header[2]=sectornum;
+    /* Waiting for the sector to write. */
+    sector_header[0] = 0xFF; /* track */
+    sector_header[1] = 0x00; /* head */
+    sector_header[2] = sectornum; /* secno */
 
     sectorfound = 0;
-    retry = 30;
 
-    if (sectornum) {
+    for (retry2 = 0; !sectorfound && (retry2 < 2); retry2++) {
 
-        do {
+        for (retry = 0; !sectorfound && (retry < 30); retry++) {
 
-            do {
+            if (!readtrack(track_buffer_rd, 16))
+                return 0;
 
-                i = 0;
+            /* Skip past 4489 sync words. */
+            i = 0;
+            while ((track_buffer_rd[i] == 0x4489) && (i<8))
+                i++;
 
-                retry--;
+            /* IDAM (0xFE)? */
+            if (MFMTOBIN(track_buffer_rd[i]) != 0xFE)
+                continue;
 
-                if (!readtrack(track_buffer_rd,16,0))
-                    return 0;
-
-                while (track_buffer_rd[i] == 0x4489 && (i<16))
-                    i++;
-
-                if (MFMTOBIN(track_buffer_rd[i])==0xFE && (i<(16-3))) {
-
-                    CRC16_Init(&CRC16_High, &CRC16_Low);
-
-                    for (j = 0; j < 3; j++)
-                        CRC16_Update(&CRC16_High,&CRC16_Low,0xA1);
-
-                    for (j = 0; j < (1+4+2); j++) {
-                        c = MFMTOBIN(track_buffer_rd[i+j]);
-                        CRC16_Update(&CRC16_High, &CRC16_Low,c);
-                    }
-
-                    if (!CRC16_High && !CRC16_Low) {
-                        i++;
-
-                        j = 0;
-                        while (j<3 && ( MFMTOBIN(track_buffer_rd[i]) == sector_header[j])) { // track,side,sector
-                            j++;
-                            i++;
-                        }
-
-                        if (j == 3) {
-                            sectorfound=1;
-                            if (!writetrack(track_buffer_wr,len,0))
-                                return 0;
-                        }
-                    }
-                }
-            } while (!sectorfound  && retry);
-
-            if (!sectorfound) {
-                if (jumptotrack(255)) {
-                    hxc_printf_box("ERROR: writesector -> failure while seeking the track 00!");
-                }
-                retry=30;
+            /* CRC the ID Address area. */
+            CRC16_Init(&CRC16_High, &CRC16_Low);
+            for (j = 0; j < 3; j++)
+                CRC16_Update(&CRC16_High, &CRC16_Low, 0xA1); /* sync */
+            for (j = 0; j < (1+4+2); j++) {
+                c = MFMTOBIN(track_buffer_rd[i+j]);
+                CRC16_Update(&CRC16_High, &CRC16_Low,c);
             }
-            retry2--;
 
-        } while (!sectorfound && retry2);
+            /* Good CRC? */
+            if (CRC16_High || CRC16_Low)
+                continue;
 
-    } else {
-        sectorfound = 1;
+            /* Check the track,head,secno */
+            for (j = 0, i++; j < 3; j++, i++)
+                if (MFMTOBIN(track_buffer_rd[i]) != sector_header[j])
+                    break;
+            if (j != 3)
+                continue;
 
-        if (!writetrack(track_buffer_wr,len,1))
-            return 0;
+            /* Found it. Now write the sector out. */
+            sectorfound = 1;
+            validcache = 0;
+            if (!writetrack(track_buffer_wr, mfm_len))
+                return 0;
+        }
+
+        if (!sectorfound && jumptotrack(255))
+            hxc_printf_box("ERROR: writesector -> seek fail");
     }
 
     return sectorfound;
 }
 
 
-unsigned char readsector(unsigned char sectornum,unsigned char * data,unsigned char invalidate_cache)
+unsigned char readsector(
+    unsigned char sectornum, unsigned char *data,
+    unsigned char invalidate_cache)
 {
-    unsigned short i,j;
-    unsigned char sectorfound,tc;
-    unsigned char retry,retry2;
-    unsigned char CRC16_High,CRC16_Low;
+    unsigned short i, j;
+    unsigned char sectorfound, tc;
+    unsigned char retry, retry2;
+    unsigned char CRC16_High, CRC16_Low;
     unsigned char sector_header[8];
     unsigned char sect_num;
 
-    dbg_printf("readsector : %d - %d\n",sectornum,invalidate_cache);
+    dbg_printf("readsector : %d - %d\n", sectornum, invalidate_cache);
 
-    if (!(sectornum<MAX_CACHE_SECTOR))
+    if (sectornum >= MAX_CACHE_SECTOR)
         return 0;
 
-    retry2 = 2;
-    retry = 5;
+    sector_header[0] = 0xFE; /* IDAM */
+    sector_header[1] = 0xFF; /* Track */
+    sector_header[2] = 0x00; /* Side */
+    sector_header[3] = sectornum; /* Sector */
+    sector_header[4] = 0x02; /* Size */
 
-    sector_header[0] = 0xFE; // IDAM
-    sector_header[1] = 0xFF; // Track
-    sector_header[2] = 0x00; // Side
-    sector_header[3] = sectornum; // Sector
-    sector_header[4] = 0x02;      // Size
-
+    /* Compute the CRC for the IDAM area. */
     CRC16_Init(&CRC16_High, &CRC16_Low);
     for (j = 0; j < 3; j++)
-        CRC16_Update(&CRC16_High,&CRC16_Low,0xA1);
-
+        CRC16_Update(&CRC16_High, &CRC16_Low, 0xA1);
     for (j = 0; j < 5; j++)
-        CRC16_Update(&CRC16_High, &CRC16_Low,sector_header[j]);
+        CRC16_Update(&CRC16_High, &CRC16_Low, sector_header[j]);
 
-    sector_header[5] = CRC16_High;// CRC H
-    sector_header[6] = CRC16_Low; // CRC L
+    sector_header[5] = CRC16_High; /* CRC High */
+    sector_header[6] = CRC16_Low; /* CRC Low */
 
-    do {
-        do {
-            sectorfound = 0;
-            i = 0;
-            if (!validcache || invalidate_cache) {
-                if (!readtrack(track_buffer_rd,RD_TRACK_BUFFER_SIZE,0))
+    sectorfound = 0;
+
+    for (retry2 = 0; !sectorfound && (retry2 < 2); retry2++) {
+
+        for (retry = 0; !sectorfound && (retry < 5); retry++) {
+
+            if (invalidate_cache || retry || retry2)
+                validcache = 0;
+
+            if (!validcache) {
+
+                /* Reload the track buffer. */
+                if (!readtrack(track_buffer_rd, RD_TRACK_BUFFER_SIZE))
                     return 0;
+                validcache = 1;
 
-                i = 1;
-                for (j = 0; j < MAX_CACHE_SECTOR; j++)
-                    sector_pos[j]=0xFFFF;
+                /* Invalidate the sector-position table. */
+                memset(sector_pos, 0xff, sizeof(sector_pos));
 
-                for (j = 0; j < 9; j++) {
-                    while (i < RD_TRACK_BUFFER_SIZE && ( track_buffer_rd[i]!=0x4489 ))
+                for (i = 0;;) {
+                    /* Find sync mark (4489). */
+                    while ((i < RD_TRACK_BUFFER_SIZE)
+                           && (track_buffer_rd[i] != 0x4489))
                         i++;
-
                     if (i == RD_TRACK_BUFFER_SIZE)
                         break;
 
-                    while (i < RD_TRACK_BUFFER_SIZE && (track_buffer_rd[i]==0x4489 ))
+                    /* Skip past sync marks (4489). */
+                    while ((i < RD_TRACK_BUFFER_SIZE)
+                           && (track_buffer_rd[i]==0x4489 ))
                         i++;
-
                     if (i == RD_TRACK_BUFFER_SIZE)
                         break;
 
-                    if (MFMTOBIN(track_buffer_rd[i]) == 0xFE) {
-                        dbg_printf("pre-cache sector : index mark at %d sector %d\n",i,MFMTOBIN(track_buffer_rd[i+3]));
+                    /* IDAM (0xFE)? */
+                    if (MFMTOBIN(track_buffer_rd[i]) != 0xFE)
+                        continue;
 
-                        sect_num = MFMTOBIN(track_buffer_rd[i+3]);
-                        if (sect_num < MAX_CACHE_SECTOR) {
-                            if (sector_pos[sect_num] == 0xFFFF) {
-                                if (i < (RD_TRACK_BUFFER_SIZE - 1088)) {
-                                    sector_pos[sect_num] = i;
-                                    dbg_printf("pre-cache sector : %d - %d\n",sect_num,i);
-                                }
+                    sect_num = MFMTOBIN(track_buffer_rd[i+3]);
+                    dbg_printf("pre-cache sector: IDAM at %d, sector %d\n",
+                               i, sect_num);
 
-                            } else {
-                                dbg_printf("pre-cache sector : sector already found : %d sector %d\n",i,sector_pos[sect_num]);
-                            }
-                        }
-
-                        i += ( 512 + 2 );
-                    } else {
-                        i++;
+                    if ((sect_num < MAX_CACHE_SECTOR)
+                        && (sector_pos[sect_num] == 0xffff)
+                        && (i < (RD_TRACK_BUFFER_SIZE - 1088))) {
+                        sector_pos[sect_num] = i;
+                        dbg_printf("pre-cache sector: %d - %d\n", sect_num, i);
                     }
+
+                    i += 512 + 2;
                 }
             }
 
+            /* Check if we have this sector cached. Retry if not. */
             i = sector_pos[sectornum];
+            if (i >= (RD_TRACK_BUFFER_SIZE - 1088))
+                continue;
 
-            dbg_printf("sector %d offset %d\n",sectornum,i);
+            dbg_printf("sector %d offset %d\n", sectornum, i);
 
-            if (i < (RD_TRACK_BUFFER_SIZE - 1088)) {
-                // Check if we have a valid sector header
-                j = 0;
-                while (j<7 && ( MFMTOBIN(track_buffer_rd[i+j]) == sector_header[j] ) ) { // track,side,sector
-                    j++;
-                }
+            /* Check if we have a valid sector header. */
+            for (j = 0; j < 7; j++)
+                if (MFMTOBIN(track_buffer_rd[i+j]) != sector_header[j])
+                    break;
+            if (j != 7)
+                continue;
+            dbg_printf("Valid header found\n");
 
-                if (j == 7) { // yes
-                    dbg_printf("Valid header found\n");
+            /* Search for the DAM. */
+            for (j = 0, i += 35; j < 30; j++, i++)
+                if (MFMTOBIN(track_buffer_rd[i]) == 0xFB)
+                    break;
+            if (j == 30)
+                continue;
+            dbg_printf("Data mark found (%d)\n", j);
 
-                    i += 35;
+            /* CRC: Sync words. */
+            CRC16_Init(&CRC16_High, &CRC16_Low);
+            for (j = 0; j < 3; j++)
+                CRC16_Update(&CRC16_High, &CRC16_Low, 0xA1);
 
-                    j = 0;
-                    while (j<30 && (MFMTOBIN(track_buffer_rd[i]) != 0xFB)) { // Data mark
-                        i++;
-                        j++;
-                    }
+            /* CRC: DAM. */
+            CRC16_Update(&CRC16_High, &CRC16_Low, 0xFB);
 
-                    if (j != 30) {
-                        dbg_printf("Data mark found (%d)\n",j);
-
-                        // 0xA1 * 3
-                        CRC16_Init(&CRC16_High, &CRC16_Low);
-                        for (j=0;j<3;j++)
-                            CRC16_Update(&CRC16_High,&CRC16_Low,0xA1);
-
-                        // Data Mark
-                        CRC16_Update(&CRC16_High,&CRC16_Low,MFMTOBIN(track_buffer_rd[i]));
-                        i++;
-
-                        // Data
-                        for (j = 0; j < 512; j++) {
-                            tc = MFMTOBIN(track_buffer_rd[i]);
-                            i++;
-                            data[j] = tc;
-                        }
-
-                        for (j = 0; j < 2; j++) {
-                            tc = MFMTOBIN(track_buffer_rd[i]);
-                            i++;
-                            CRC16_Update(&CRC16_High, &CRC16_Low,tc);
-                        }
-
-                        if (1)//!CRC16_High && !CRC16_Low)
-                            sectorfound = 1;
-                    }
-                }
+            /* Data (copy and CRC). */
+            for (j = 0, i++; j < 512; j++, i++) {
+                tc = MFMTOBIN(track_buffer_rd[i]);
+                data[j] = tc;
+                CRC16_Update(&CRC16_High, &CRC16_Low, tc);
             }
 
-            retry--;
-            if (!sectorfound && retry)
-                validcache=0;
-
-        } while (!sectorfound && retry);
-
-
-        if (!sectorfound) {
-            if (jumptotrack(255)) {
-                hxc_printf_box("ERROR: readsector -> failure while seeking the track 00!");
+            /* CRC */
+            for (j = 0; j < 2; j++, i++) {
+                tc = MFMTOBIN(track_buffer_rd[i]);
+                CRC16_Update(&CRC16_High, &CRC16_Low,tc);
             }
 
-            retry2--;
-            retry=5;
+            sectorfound = (!CRC16_High && !CRC16_Low);
         }
 
-    } while (!sectorfound && retry2);
+        if (!sectorfound && jumptotrack(255))
+            hxc_printf_box("ERROR: readsector -> seek fail");
+    }
 
     if (!sectorfound)
-        validcache=0;
+        validcache = 0;
 
     return sectorfound;
 }
@@ -874,7 +717,9 @@ void init_fdc(int drive)
 
     dbg_printf("init_fdc\n");
 
-    CIABPRB_DSKSEL = CIABPRB_SEL0 << (drive & 3);
+    /* Motor on, side 0 */
+    drive_select(drive, 1);
+    ciab->prb |= CIABPRB_SIDE; /* side 0 */
 
     validcache = 0;
 
@@ -883,9 +728,6 @@ void init_fdc(int drive)
                             ((i&0x04)>>1) | (i&0x01));
         mfmtobinLUT_H[i] = mfmtobinLUT_L[i] << 4;
     }
-
-    ciab->prb = ~(CIABPRB_MTR | CIABPRB_DSKSEL);
-    cust->dmacon = DMA_SETCLR | DMA_DSKEN;
 
     if (jumptotrack(255)) {
         hxc_printf_box("ERROR: init_fdc drive %d -> failure "
@@ -1060,7 +902,7 @@ static uint8_t vbl_hz;
 static uint16_t *copper;
 
 /* Wait for end of bitplane DMA. */
-void wait_bos(void)
+static void wait_bos(void)
 {
     while (*(volatile uint8_t *)&cust->vhposr != 0xf0)
         continue;
@@ -1097,6 +939,7 @@ static void take_over_system(void)
         continue; /* wait for vbl before disabling sprite dma */
     cust->dmacon = 0x7fff;
     cust->adkcon = 0x7fff;
+    cust->dsklen = 0x4000;
 
     /* Master DMA/IRQ enable. */
     cust->dmacon = 0x8200;
@@ -1134,7 +977,6 @@ static void c_VBLANK_IRQ(void)
     uint16_t cur16 = get_ciaatb();
 
     vblank_count++;
-    io_floppy_timeout++;
 
     stamp32 -= (uint16_t)(stamp16 - cur16);
     stamp16 = cur16;
@@ -1180,10 +1022,11 @@ int init_display(void)
 
     m68k_vec->level3_autovector.p = VBLANK_IRQ;
     m68k_vec->level2_autovector.p = CIAA_IRQ;
+    m68k_vec->level6_autovector.p = CIAB_IRQ;
 
     wait_bos();
     cust->dmacon = DMA_SETCLR | DMA_COPEN | DMA_DSKEN;
-    cust->intena = INT_SETCLR | INT_CIAA | INT_VBLANK;
+    cust->intena = INT_SETCLR | INT_CIAA | INT_CIAB | INT_VBLANK;
 
     /* Detect our hardware environment. */
     vbl_hz = detect_vbl_hz();
@@ -1231,17 +1074,13 @@ void print_char8x8(unsigned char *membuffer, bmaptype *font,
                    int x, int y, unsigned char c)
 {
     int j;
-    unsigned char *ptr_src;
-    unsigned char *ptr_dst;
+    unsigned char *ptr_src = font->data;
+    unsigned char *ptr_dst = membuffer;
 
-    ptr_dst = (unsigned char*)membuffer;
-    ptr_src = (unsigned char*)&font->data[0];
-
-    x = x>>3;
-    //x=((x&(~0x1))<<1)+(x&1);//  0 1   2 3
-    ptr_dst += ((y*80)+ x);
-    ptr_src += (((c>>4)*(8*8*2))+(c&0xF));
-    for ( j = 0; j < 8; j++) {
+    x >>= 3;
+    ptr_dst += (y * 80) + x;
+    ptr_src += ((c >> 4) * (8*8*2)) + (c & 0xf);
+    for (j = 0; j < 8; j++) {
         *ptr_dst = *ptr_src;
         ptr_src += 16;
         ptr_dst += 80;
@@ -1252,11 +1091,8 @@ void display_sprite(unsigned char *membuffer, bmaptype * sprite,int x, int y)
 {
     int i, j, base_offset;
     unsigned short k, l;
-    unsigned short *ptr_src;
-    unsigned short *ptr_dst;
-
-    ptr_dst = (unsigned short*)membuffer;
-    ptr_src = (unsigned short*)&sprite->data[0];
+    unsigned short *ptr_src = (unsigned short *)sprite->data;
+    unsigned short *ptr_dst = (unsigned short *)membuffer;
 
     k = 0;
     l = 0;

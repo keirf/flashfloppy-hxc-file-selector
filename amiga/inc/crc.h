@@ -1,7 +1,4 @@
-/*
- * CRC16 "Register". This is implemented as two 8bit values
- */
+#include "types.h"
 
-void CRC16_Update(unsigned char *CRC16_High, unsigned char *CRC16_Low, unsigned char val );
-void CRC16_Init( unsigned char *CRC16_High, unsigned char *CRC16_Low);
-
+void CRC16_Update(uint8_t *CRC16_High, uint8_t *CRC16_Low, uint8_t val);
+void CRC16_Init(uint8_t *CRC16_High, uint8_t *CRC16_Low);

@@ -46,25 +46,25 @@
 #include "color_table.h"
 #include "mfm_table.h"
 
-unsigned char *screen_buffer;
-unsigned char *screen_buffer_backup;
-unsigned short SCREEN_XRESOL;
-unsigned short SCREEN_YRESOL;
+uint8_t *screen_buffer;
+uint8_t *screen_buffer_backup;
+uint16_t SCREEN_XRESOL;
+uint16_t SCREEN_YRESOL;
 
-static unsigned char *mfmtobinLUT_L;
-static unsigned char *mfmtobinLUT_H;
+static uint8_t *mfmtobinLUT_L;
+static uint8_t *mfmtobinLUT_H;
 #define MFMTOBIN(W) (mfmtobinLUT_H[W>>8] | mfmtobinLUT_L[W&0xFF])
 
 #define RD_TRACK_BUFFER_SIZE 10*1024
 #define WR_TRACK_BUFFER_SIZE 600
 
-static unsigned short *track_buffer_rd;
-static unsigned short *track_buffer_wr;
+static uint16_t *track_buffer_rd;
+static uint16_t *track_buffer_wr;
 
-static unsigned char validcache;
+static uint8_t validcache;
 
 #define MAX_CACHE_SECTOR 16
-unsigned short sector_pos[MAX_CACHE_SECTOR];
+uint16_t sector_pos[MAX_CACHE_SECTOR];
 
 #if __GNUC__ < 3
 #define attribute_used __attribute__((unused))
@@ -132,7 +132,7 @@ static uint32_t div32(uint32_t dividend, uint16_t divisor)
 
 #ifdef DEBUG
 
-static void push_serial_char(unsigned char byte)
+static void push_serial_char(uint8_t byte)
 {
     cust->serper = 0x1e; /* 115200 baud */
     while (!(cust->serdatr & 0x2000))
@@ -368,7 +368,7 @@ int get_start_unit(char *path)
     return -1;
 }
 
-int jumptotrack(unsigned char t)
+int jumptotrack(uint8_t t)
 {
     unsigned int steps = 0;
 
@@ -414,7 +414,7 @@ static bool_t disk_wait_dma(void)
     return (i < 1000);
 }
 
-static int readtrack(unsigned short *track, unsigned short size)
+static int readtrack(uint16_t *track, uint16_t size)
 {
     cust->dskpt.p = track;
     cust->adkcon = 0x7f00; /* clear disk flags */
@@ -428,7 +428,7 @@ static int readtrack(unsigned short *track, unsigned short size)
     return disk_wait_dma();
 }
 
-static int writetrack(unsigned short *track, unsigned short size)
+static int writetrack(uint16_t *track, uint16_t size)
 {
     cust->dskpt.p = track;
     cust->adkcon = 0x7f00; /* clear disk flags */
@@ -443,13 +443,13 @@ static int writetrack(unsigned short *track, unsigned short size)
 
 /* Fast Bin to MFM converter */
 static void BuildCylinder(
-    void *mfm_buffer, void *track_data, int size, unsigned short *p_lastbit)
+    void *mfm_buffer, void *track_data, int size, uint16_t *p_lastbit)
 {
-    unsigned char byte;
-    unsigned short mfm_code;
-    unsigned char *in = track_data;
-    unsigned char *out = mfm_buffer;
-    unsigned short lastbit = *p_lastbit;
+    uint8_t byte;
+    uint16_t mfm_code;
+    uint8_t *in = track_data;
+    uint8_t *out = mfm_buffer;
+    uint16_t lastbit = *p_lastbit;
 
     /* MFM Encoding */
     while (size--) {
@@ -466,13 +466,13 @@ static void BuildCylinder(
     *p_lastbit = lastbit;
 }
 
-unsigned char writesector(unsigned char sectornum, unsigned char *data)
+uint8_t writesector(uint8_t sectornum, uint8_t *data)
 {
-    unsigned short i, j, mfm_len, retry, retry2, lastbit;
-    unsigned char sectorfound;
-    unsigned char c;
-    unsigned char CRC16_High, CRC16_Low, byte;
-    unsigned char sector_header[4];
+    uint16_t i, j, mfm_len, retry, retry2, lastbit;
+    uint8_t sectorfound;
+    uint8_t c;
+    uint8_t CRC16_High, CRC16_Low, byte;
+    uint8_t sector_header[4];
 
     dbg_printf("writesector : %d\n",sectornum);
 
@@ -569,16 +569,14 @@ unsigned char writesector(unsigned char sectornum, unsigned char *data)
 }
 
 
-unsigned char readsector(
-    unsigned char sectornum, unsigned char *data,
-    unsigned char invalidate_cache)
+uint8_t readsector(uint8_t sectornum, uint8_t *data, uint8_t invalidate_cache)
 {
-    unsigned short i, j;
-    unsigned char sectorfound, tc;
-    unsigned char retry, retry2;
-    unsigned char CRC16_High, CRC16_Low;
-    unsigned char sector_header[8];
-    unsigned char sect_num;
+    uint16_t i, j;
+    uint8_t sectorfound, tc;
+    uint8_t retry, retry2;
+    uint8_t CRC16_High, CRC16_Low;
+    uint8_t sector_header[8];
+    uint8_t sect_num;
 
     dbg_printf("readsector : %d - %d\n", sectornum, invalidate_cache);
 
@@ -713,7 +711,7 @@ unsigned char readsector(
 
 void init_fdc(int drive)
 {
-    unsigned short i;
+    uint16_t i;
 
     dbg_printf("init_fdc\n");
 
@@ -743,11 +741,11 @@ void init_fdc(int drive)
  *                          Joystick / Keyboard I/O
  ****************************************************************************/
 
-static unsigned char Joystick(void)
+static uint8_t Joystick(void)
 {
-    unsigned short code = cust->joy1dat;
-    unsigned char bcode = ciaa->pra;
-    unsigned char ret = 0;
+    uint16_t code = cust->joy1dat;
+    uint8_t bcode = ciaa->pra;
+    uint8_t ret = 0;
 
     if ( (code&0x100) ^ ((code&0x200)>>1) ) /* Up */
         ret |= 1;
@@ -807,10 +805,10 @@ void flush_char(void)
     key_buffer = 0x80;
 }
 
-unsigned char get_char(void)
+uint8_t get_char(void)
 {
-    unsigned char i, key;
-    unsigned char function_code, key_code;
+    uint8_t i, key;
+    uint8_t function_code, key_code;
 
     function_code = FCT_NO_FUNCTION;
 
@@ -831,11 +829,11 @@ unsigned char get_char(void)
 }
 
 
-unsigned char wait_function_key(void)
+uint8_t wait_function_key(void)
 {
-    static unsigned char keyup;
-    unsigned char joy, i, key;
-    unsigned char function_code, key_code;
+    static uint8_t keyup;
+    uint8_t joy, i, key;
+    uint8_t function_code, key_code;
 
     function_code = FCT_NO_FUNCTION;
 
@@ -1051,7 +1049,7 @@ int init_display(void)
     return 0;
 }
 
-unsigned char set_color_scheme(unsigned char color)
+uint8_t set_color_scheme(uint8_t color)
 {
     UWORD *c = &colortable[(color&0x1F)*4];
     uint16_t *p;
@@ -1070,12 +1068,12 @@ unsigned char set_color_scheme(unsigned char color)
     return color;
 }
 
-void print_char8x8(unsigned char *membuffer, bmaptype *font,
-                   int x, int y, unsigned char c)
+void print_char8x8(uint8_t *membuffer, bmaptype *font,
+                   int x, int y, uint8_t c)
 {
     int j;
-    unsigned char *ptr_src = font->data;
-    unsigned char *ptr_dst = membuffer;
+    uint8_t *ptr_src = font->data;
+    uint8_t *ptr_dst = membuffer;
 
     x >>= 3;
     ptr_dst += (y * 80) + x;
@@ -1087,12 +1085,12 @@ void print_char8x8(unsigned char *membuffer, bmaptype *font,
     }
 }
 
-void display_sprite(unsigned char *membuffer, bmaptype * sprite,int x, int y)
+void display_sprite(uint8_t *membuffer, bmaptype * sprite,int x, int y)
 {
     int i, j, base_offset;
-    unsigned short k, l;
-    unsigned short *ptr_src = (unsigned short *)sprite->data;
-    unsigned short *ptr_dst = (unsigned short *)membuffer;
+    uint16_t k, l;
+    uint16_t *ptr_src = (uint16_t *)sprite->data;
+    uint16_t *ptr_dst = (uint16_t *)membuffer;
 
     k = 0;
     l = 0;
@@ -1107,12 +1105,12 @@ void display_sprite(unsigned char *membuffer, bmaptype * sprite,int x, int y)
     }
 }
 
-void h_line(int y_pos, unsigned short val)
+void h_line(int y_pos, uint16_t val)
 {
-    unsigned short *ptr_dst;
+    uint16_t *ptr_dst;
     int i, ptroffset;
 
-    ptr_dst = (unsigned short*)screen_buffer;
+    ptr_dst = (uint16_t*)screen_buffer;
     ptroffset = 40* y_pos;
 
     for (i = 0; i < 40; i++)
@@ -1120,12 +1118,12 @@ void h_line(int y_pos, unsigned short val)
 }
 
 void box(int x_p1, int y_p1, int x_p2, int y_p2,
-         unsigned short fillval, unsigned char fill)
+         uint16_t fillval, uint8_t fill)
 {
-    unsigned short *ptr_dst;
+    uint16_t *ptr_dst;
     int i, j, ptroffset, x_size;
 
-    ptr_dst = (unsigned short*)screen_buffer;
+    ptr_dst = (uint16_t *)screen_buffer;
 
     x_size = ((x_p2-x_p1)/16)*2;
 
@@ -1140,14 +1138,12 @@ void box(int x_p1, int y_p1, int x_p2, int y_p2,
 
 void invert_line(int x_pos,int y_pos)
 {
-    int i,j;
-    unsigned short *ptr_dst;
+    int i, j;
+    uint16_t *ptr_dst = (uint16_t *)screen_buffer;
     int ptroffset;
 
     for (j = 0; j < 8; j++) {
-        ptr_dst=(unsigned short*)screen_buffer;
         ptroffset = (40 * (y_pos+j)) + x_pos;
-
         for (i = 0; i < 40; i++)
             ptr_dst[ptroffset+i] = ptr_dst[ptroffset+i] ^ 0xFFFF;
     }

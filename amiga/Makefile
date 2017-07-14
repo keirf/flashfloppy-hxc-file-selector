@@ -10,7 +10,7 @@ AFLAGS += $(CFLAGS) -D__ASSEMBLY__ -Wa,--register-prefix-optional
 AFLAGS += -Wa,-l -Wa,--bitwise-or -Wa,--base-size-default-16
 AFLAGS += -Wa,--disp-size-default-16 -Wa,--pcrel
 
-EXEC = HXCFEMNG
+EXEC = FFManager
 
 all: $(EXEC)
 	m68k-amigaos-strip -s $(EXEC)
@@ -18,7 +18,7 @@ all: $(EXEC)
 	$(MAKE) bootblock.bin
 	python adf/mk_adf.py bootblock.bin $(EXEC) AUTOBOOT_TRACKLOAD.ADF
 
-HXCFEMNG: entry.o fectrl.o gui_utils.o amiga.o libnix.o math.o crc.o fat_access.o fat_filelib.o fat_misc.o fat_string.o fat_table.o fat_write.o fat_cache.o reboot.o msg_txt.o
+$(EXEC): entry.o fectrl.o gui_utils.o amiga.o libnix.o math.o crc.o fat_access.o fat_filelib.o fat_misc.o fat_string.o fat_table.o fat_write.o fat_cache.o reboot.o msg_txt.o
 	$(CC) -o $@    $^ $(LDFLAGS)
 
 bootblock.bin: bootblock.o
@@ -77,6 +77,6 @@ fat_cache.o: ../fat32/fat_cache.c
 	$(CC) -o $@ -c $< $(CFLAGS)
 
 clean:
-	rm -rf *.o *.adf *.ADF *.map $(EXEC)
+	rm -rf *.o *.adf *.ADF *.map $(EXEC) *.bin
 
 .PHONY: clean

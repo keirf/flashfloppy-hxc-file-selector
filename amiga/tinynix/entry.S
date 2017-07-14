@@ -1,7 +1,7 @@
 /*
  * tinynix/entry.S
  *
- * Entry code for startup from Amiga Workbench or CLI.
+ * Entry code for startup from trackloader, Amiga Workbench, or CLI.
  *
  * Written & released by Keir Fraser <keir.xen@gmail.com>
  */
@@ -32,59 +32,56 @@
 start:
         move.l  4,a6
         move.l  a6,_SysBase
+
+        /* Open dos.library and stash DOSBase */
+        lea     .dos(pc),a1
+        moveq   #0,d0
+        jsr     EXEC_OpenLibrary(a6)
+        move.l  d0,_DOSBase
+        jeq     .nowb             /* No DOSBase? We were trackloaded. */
+
         /* Find our Process structure and determine how we were started. */
         sub.l   a1,a1
-        move.l  a1,-(sp)          /* no wb startup msg yet */
-        jsr     EXEC_FindTask(a6)  /* FindTask(NULL) */
+        jsr     EXEC_FindTask(a6) /* FindTask(NULL) */
         move.l  d0,a4
         tst.l   pr_CLI(a4)        /* Running from CLI? */
-        bne     .nowb
+        jne     .nowb
 
         /* Started from Workbench: wait for start message */
         lea     pr_MsgPort(a4),a0
         jsr     EXEC_WaitPort(a6)
         lea     pr_MsgPort(a4),a0
         jsr     EXEC_GetMsg(a6)
-        move.l  d0,(sp)           /* Save the startup msg */
+        move.l  d0,_WBMsg         /* Save the startup msg */
 .nowb:
-        /* Open dos.library and stash DOSBase */
-        lea     .dos(pc),a1
-        moveq   #0,d0
-        jsr     EXEC_OpenLibrary(a6)
-        move.l  d0,_DOSBase
         /* graphics.library set up a compatible view */
         lea     .gfx(pc),a1
         moveq   #0,d0
         jsr     EXEC_OpenLibrary(a6)
+        move.l  d0,_GfxBase
         move.l  d0,a6
-        move.l  gfx_ActiView(a6),-(sp)
+        move.l  gfx_ActiView(a6),_OrigView
         sub.l   a1,a1
         jsr     GFX_LoadView(a6)  /* LoadView(NULL) */
         jsr     GFX_WaitTOF(a6)
         jsr     GFX_WaitTOF(a6)
-        move.l  a6,-(sp)
-        
+
         moveq   #0,d0
         move.l  d0,-(sp) /* env */
         move.l  d0,-(sp) /* argc */
         move.l  d0,-(sp) /* argv */
         jbsr    _main
         add.l   #12,sp   /* pop params */
-        move.l  d0,d7
+        move.l  d0,-(sp) /* push return code */
 
-        /* d7 = return code */
-        /* 0(sp) = gfxbase */
-        /* 4(sp) = original view */
-        /* 8(sp) = wb msg (or null) */
-        
         /* Restore original view */
-        move.l  (sp)+,a6
+        move.l  _GfxBase,a6
         jsr     GFX_WaitTOF(a6)
         jsr     GFX_WaitTOF(a6)
         lea.l   (0xdff000).l,a5
         move.l  gfx_cop1(a6),0x80(a5)   /* cop1lc */
         move.l  gfx_cop2(a6),0x84(a5)   /* cop2lc */
-        move.l  (sp)+,a1
+        move.l  _OrigView,a1
         jsr     GFX_LoadView(a6)        /* original view */
 
         /* Close graphics library */
@@ -92,18 +89,27 @@ start:
         move.l  _SysBase,a6
         jsr     EXEC_CloseLibrary(a6)
 
-        move.l  (sp)+,d3        /* d3 = workbench msg */
-        beq     .quit
+        move.l  _WBMsg,d3        /* d3 = workbench msg */
+        jeq     .quit
         /* Workbench: Return the startup message to our parent */
         jsr     EXEC_Forbid(a6)
         move.l  d3,a1
         jsr     EXEC_ReplyMsg(a6)
-.quit:  move.l  d7,d0
+.quit:  move.l  (sp)+,d0
         rts
 
 .gfx:   .asciz  "graphics.library"
 .dos:   .asciz  "dos.library"
-        .align  4
 
-        .comm   _SysBase,4
-        .comm   _DOSBase,4
+        .globl _SysBase, _DOSBase, _GfxBase, _WBMsg, _OrigView
+        .align  4
+_SysBase:
+        dc.l    0
+_DOSBase:
+        dc.l    0
+_GfxBase:
+        dc.l    0
+_WBMsg:
+        dc.l    0
+_OrigView:
+        dc.l    0

@@ -344,6 +344,11 @@ static bool_t test_drive(int drive)
 static int start_unit = -1;
 static void _get_start_unit(void)
 {
+    if (!DOSBase) {
+        /* Trackloaded. Assume unit 0. */
+        start_unit = 0;
+        return;
+    }
     /* NB. On dos.library < v36 we can't get at the program dir or path 
      * (libnix's argv[0] is computed from GetProgramName()). */
     if (GetLibraryVersion((struct Library *)DOSBase) >= 36)

@@ -1,24 +1,38 @@
 CC = m68k-amigaos-gcc
 AS = m68k-amigaos-as
+OBJCOPY = m68k-amigaos-objcopy
 
 CFLAGS += -Os -I./inc -I.. -I../fat32 -nostdlib -DFATFS_IS_LITTLE_ENDIAN=0
 CFLAGS += -m68000 -Wall -Werror -std=gnu99 -msoft-float -fno-builtin
 #CFLAGS += -DDEBUG
-LDFLAGS = $(CFLAGS) -s -Wl,-Map,foo.map
+LDFLAGS += $(CFLAGS) -s -Wl,-Map,foo.map
+AFLAGS += $(CFLAGS) -D__ASSEMBLY__ -Wa,--register-prefix-optional
+AFLAGS += -Wa,-l -Wa,--bitwise-or -Wa,--base-size-default-16
+AFLAGS += -Wa,--disp-size-default-16 -Wa,--pcrel
+
 EXEC = HXCFEMNG
 
 all: $(EXEC)
 	m68k-amigaos-strip -s $(EXEC)
-	exe2adf -i $(EXEC) -a AUTOBOOT.ADF -0 >/dev/null
+	exe2adf -i $(EXEC) -a AUTOBOOT_AMIGADOS.ADF -0 >/dev/null
+	$(MAKE) bootblock.bin
+	python adf/mk_adf.py bootblock.bin $(EXEC) AUTOBOOT_TRACKLOAD.ADF
 
 HXCFEMNG: entry.o fectrl.o gui_utils.o amiga.o libnix.o math.o crc.o fat_access.o fat_filelib.o fat_misc.o fat_string.o fat_table.o fat_write.o fat_cache.o reboot.o msg_txt.o
 	$(CC) -o $@    $^ $(LDFLAGS)
 
+bootblock.bin: bootblock.o
+	$(OBJCOPY) -O binary $< $@
+	chmod a-x $@
+
+bootblock.o: adf/bootblock.S
+	$(CC) -o $@ -c $< $(AFLAGS)
+
 entry.o: tinynix/entry.S
-	$(CC) -o $@ -c $< $(CFLAGS)
+	$(CC) -o $@ -c $< $(AFLAGS)
 
 reboot.o: reboot.S
-	$(CC) -o $@ -c $< $(CFLAGS)
+	$(CC) -o $@ -c $< $(AFLAGS)
 
 fectrl.o: ../fectrl.c
 	$(CC) -o $@ -c $< $(CFLAGS)

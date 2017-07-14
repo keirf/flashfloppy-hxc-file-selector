@@ -1,3 +1,4 @@
 /HXCFEMNG
-/AUTOBOOT.ADF
+/*.ADF
 /foo.map
+/bootblock.bin

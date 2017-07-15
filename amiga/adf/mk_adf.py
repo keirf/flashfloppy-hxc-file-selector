@@ -24,24 +24,26 @@ def main(argv):
     out_f = open(argv[3], "wb")
     bb_dat = bb_f.read()
     pl_dat = pl_f.read()
-    # Payload length is padded to multiple of 512 bytes for trackloader
-    pl_len = struct.pack(">L", (len(pl_dat) + 511) & ~511)
-    # Compute checksum over 512-byte bootblock, first 512 bytes of payload,
-    # and the payload size (which we will stuff into the bootblock later).
-    sum = checksum(pl_dat[:512], checksum(bb_dat, checksum(pl_len)))
+
+    # Construct bootblock header. We will splice in the checksum later.
+    header = struct.pack(">ccccLLLL",
+                         'D', 'O', 'S', '\0',         # Bootblock signature
+                         0,                           # Checksum (placeholder)
+                         880,                         # Root block
+                         0x60060000,                  # BRA.B +6
+                         (len(pl_dat) + 511) & ~511)  # Payload length, padded
+                         
+    
+    # Compute checksum over header, bootblock, and first 512 bytes of payload.
+    sum = checksum(pl_dat[:512], checksum(bb_dat, checksum(header)))
     sum ^= 0xFFFFFFFF
-    # "DOS\0"
-    out_f.write(bb_dat[0:4])
-    # Checksum
-    out_f.write(struct.pack(">L", sum))
-    # 880, BRA start
-    out_f.write(bb_dat[8:16])
-    # Payload length
-    out_f.write(pl_len)
-    # Bootblock code
-    out_f.write(bb_dat[20:])
+    # Splice the computed checksum into the header
+    header = header[:4] + struct.pack(">L", sum) + header[8:]
+    # Write out the header and bootblock code
+    out_f.write(header)
+    out_f.write(bb_dat)
     # Pad bootblock to 512 bytes
-    for x in xrange((512-len(bb_dat))/4):
+    for x in xrange((512-len(bb_dat)-len(header))/4):
         out_f.write(struct.pack(">L", 0))
     # Write the payload from sector 1 onwards
     out_f.write(pl_dat)

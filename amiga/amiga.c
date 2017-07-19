@@ -381,7 +381,7 @@ int jumptotrack(uint8_t t)
 {
     unsigned int steps = 0;
 
-    dbg_printf("jumptotrack %d - seek track 0...\n",t);
+    dbg_printf("jumptotrack %d - seek track 0...\n", t);
 
     ciab->prb |= CIABPRB_DIR; /* outward */
     delay_ms(18);
@@ -390,23 +390,23 @@ int jumptotrack(uint8_t t)
         ciab->prb |= CIABPRB_STEP;
         delay_ms(3);
         if (steps++ >= 1024) {
-            dbg_printf("jumptotrack %d - track 0 not found!!\n",t);
+            dbg_printf("jumptotrack %d - track 0 not found!!\n", t);
             return 1;
         }
     }
     delay_ms(15);
 
-    dbg_printf("jumptotrack %d - track 0 found\n",t);
+    dbg_printf("jumptotrack %d - track 0 found\n", t);
 
     ciab->prb &= ~CIABPRB_DIR; /* inward */
-    while (t--) {
+    for (steps = 0; steps < t; steps++) {
         ciab->prb &= ~CIABPRB_STEP;
         ciab->prb |= CIABPRB_STEP;
         delay_ms(3);
     }
     delay_ms(15);
 
-    dbg_printf("jumptotrack %d - jump done\n",t);
+    dbg_printf("jumptotrack %d - jump done\n", t);
 
     return 0;
 };
@@ -627,7 +627,7 @@ uint8_t readsector(uint8_t sectornum, uint8_t *data, uint8_t invalidate_cache)
                 /* Invalidate the sector-position table. */
                 memset(sector_pos, 0xff, sizeof(sector_pos));
 
-                for (i = 0;;) {
+                for (i = 0; i < (RD_TRACK_BUFFER_SIZE - 1088);) {
                     /* Find sync mark (4489). */
                     while ((i < RD_TRACK_BUFFER_SIZE)
                            && (track_buffer_rd[i] != 0x4489))
@@ -637,7 +637,7 @@ uint8_t readsector(uint8_t sectornum, uint8_t *data, uint8_t invalidate_cache)
 
                     /* Skip past sync marks (4489). */
                     while ((i < RD_TRACK_BUFFER_SIZE)
-                           && (track_buffer_rd[i]==0x4489 ))
+                           && (track_buffer_rd[i] == 0x4489))
                         i++;
                     if (i == RD_TRACK_BUFFER_SIZE)
                         break;

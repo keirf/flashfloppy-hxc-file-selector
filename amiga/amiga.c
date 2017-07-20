@@ -325,7 +325,6 @@ static bool_t test_drive(int drive)
 {
     bool_t is_emulated_unit;
 
-    delay_ms(100);
     drive_select(drive, 1);
     delay_us(10);
 
@@ -364,6 +363,8 @@ int get_start_unit(char *path)
 
     if (start_unit < 0)
         return -1;
+
+    delay_ms(100); /* give all motors time to spin down */
 
     for (i = 0; i < 4; i++) {
         if (test_drive(start_unit)) {
@@ -724,8 +725,8 @@ void init_fdc(int drive)
 
     dbg_printf("init_fdc\n");
 
-    /* Motor on, side 0 */
-    drive_select(drive, 1);
+    /* Select drive, side 0. Don't bother enabling drive motor. */
+    drive_select(drive, 0);
     ciab->prb |= CIABPRB_SIDE; /* side 0 */
 
     validcache = 0;

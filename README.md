@@ -30,9 +30,28 @@ The compiler must be on your PATH when you build the selector software:
  # export PATH=/home/<username>/bebbo/install/bin:$PATH
 ```
 
-To build AUTOBOOT.HFE:
+To build the AmigaDOS version of the disk (with S/Startup-Sequence)
+requires bonefish's exe2adf on your path. Download it
+[here](http://www.exe2adf.com).
+
+To produce the final HFE images from ADF requires disk-analyse on your
+path. Download and build it:
+```
+ # git clone https://github.com/keirf/Disk-Utilities.git
+ # cd Disk-Utilities
+ # make
+ # make install
+```
+
+To build the HFE images:
 ```
  # git clone https://github.com/keirf/FlashFloppy_File_Selector.git
  # cd FlashFloppy_File_Selector/amiga
  # make
+```
+
+Now copy either AUTOBOOT_TRACKLOAD.HFE or AUTOBOOT_AMIGADOS.HFE to
+your USB stick as AUTOBOOT.HFE:
+```
+ # cp AUTOBOOT_TRACKLOAD.HFE /path/to/usb/AUTOBOOT.HFE
 ```

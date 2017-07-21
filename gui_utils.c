@@ -207,9 +207,11 @@ int hxc_printf_box(char * chaine, ...)
 void init_display_buffer()
 {
 	// HxC2001 logo
+#if 0
 	display_sprite(screen_buffer, bitmap_hxc2001_smalllogo_bmp,
 	                                    (SCREEN_XRESOL-bitmap_hxc2001_smalllogo_bmp->Xsize),
 	                                    (SCREEN_YRESOL-bitmap_hxc2001_smalllogo_bmp->Ysize));
+#endif
 
 	// Horizontal separator lines
 	h_line(0,0xFFFF);

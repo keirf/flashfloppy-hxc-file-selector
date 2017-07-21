@@ -2,26 +2,20 @@
 
 const char startup_msg[]=
 {
-	"HxC Floppy Emulator file selector\n"
+	"FlashFloppy File Selector\n"
 	"V" VERSIONCODE " - " DATECODE "\n"
 	"\n"
-	"(c) 2009-2017 HxC2001 / Jean-Francois DEL NERO\n"
+	"Email : keir.xen@gmail.com\n"
+        "Git : https://github.com/keirf\n"
 	"\n"
-	"Email : hxc2001@free.fr\n"
+        "Based on original HxC Emulator file selector\n"
+	"(c) 2006-2017 HxC2001 / Jean-Francois DEL NERO\n"
 	"\n"
 	"\n"
 	">>> Press HELP key for the function key list <<<"
 	"\n"
 	"\n"
-	"Check for updates on :\n"
-	"http://hxc2001.free.fr/floppy_drive_emulator/\n"
-	"http://hxc2001.com\n"
-	"\n"
-	"Forum : http://torlus.com/floppy/forum\n"
-	"\n"
-	"Source code on http://github.com/jfdelnero\n"
-	"\n"
-	"This software use the FAT16/32 File IO Library v2.6\n"
+	"This software uses the FAT16/32 File IO Library v2.6\n"
 	"(c) 2003-2013 Ultra-Embedded.com\n"
 };
 
@@ -78,22 +72,16 @@ const char help_scr3_msg[]=
 {
 	"\n"
 	"\n"	
-	"HxC Floppy Emulator file selector\n"
+	"FlashFloppy File Selector\n"
 	"V" VERSIONCODE " - " DATECODE "\n"
+        "\n"
+	"Email : keir.xen@gmail.com\n"
+        "Git : https://github.com/keirf\n"
 	"\n"
+        "Based on original HxC Emulator file selector\n"
 	"(c) 2006-2017 HxC2001 / Jean-Francois DEL NERO\n"
-	"Email : hxc2001@free.fr\n"
 	"\n"
-	"Atari ST version optimized by Gilles Bouthenot\n"
-	"\n"
-	"Check for updates on :\n"
-	"http://hxc2001.free.fr/floppy_drive_emulator/\n"
-	"http://hxc2001.com\n"
-	"\n"
-	"Forum : http://torlus.com/floppy/forum\n"
-	"Sources on http://github.com/jfdelnero\n"
-	"\n"
-	"This software use the\n"
+	"This software uses the\n"
 	"FAT16/32 File IO Library v2.6\n"
 	"(c) 2003-2013 Ultra-Embedded.com\n"
 	"\n"
@@ -116,4 +104,4 @@ const char command_menu_msg[]=
 
 const char cur_folder_msg[]= "Current folder:";
 const char reboot_msg[]= ">>>>>Rebooting...<<<<<";
-const char title_msg[]= { "HxC Floppy Emulator file selector v" VERSIONCODE};
+const char title_msg[]= { "FlashFloppy File Selector v" VERSIONCODE};

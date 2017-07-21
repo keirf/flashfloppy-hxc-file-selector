@@ -386,7 +386,7 @@ int jumptotrack(uint8_t t)
 
     ciab->prb |= CIABPRB_DIR; /* outward */
     delay_ms(18);
-    while (!(~ciaa->pra & CIAAPRA_TK0) && (steps++ < 1024)) {
+    while (!(~ciaa->pra & CIAAPRA_TK0)) {
         ciab->prb &= ~CIABPRB_STEP;
         ciab->prb |= CIABPRB_STEP;
         delay_ms(3);
@@ -397,7 +397,7 @@ int jumptotrack(uint8_t t)
     }
     delay_ms(15);
 
-    dbg_printf("jumptotrack %d - track 0 found\n", t);
+    dbg_printf("jumptotrack %d - track 0 found in %u steps\n", t, steps);
 
     ciab->prb &= ~CIABPRB_DIR; /* inward */
     for (steps = 0; steps < t; steps++) {

@@ -1,5 +1,8 @@
- HxC Floppy Emulator file selector - A file selector program for the HxC Floppy Emulator
- Copyright (C) 2009-2016  Jean-François DEL NERO / HxC2001
+FlashFloppy file selector - A modified version of HxC's file selector
+ Changes are Copyright (c) 2017 Keir Fraser
+
+HxC Floppy Emulator file selector - A file selector program for the HxC Floppy Emulator
+ Copyright (C) 2006-2017  Jean-François DEL NERO / HxC2001
 
  contact: hxc2001( a t )free.fr
  website: http://hxc2001.free.fr/floppy_drive_emulator

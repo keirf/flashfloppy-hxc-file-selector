@@ -54,7 +54,7 @@ static uint32_t last_setlbabase;
 static unsigned char cfgfile_header[512];
 
 // Slots buffer
-static disk_in_drive_v2 disks_slots[MAX_NUMBER_OF_SLOT];
+disk_in_drive_v2 disks_slots[MAX_NUMBER_OF_SLOT];
 
 static disk_in_drive_v2_long DirectoryEntry_tab[40];
 
@@ -92,7 +92,7 @@ int setlbabase(unsigned long lba)
 
 	memset(&sector,0,512);
 
-	sprintf(dacs->DAHEADERSIGNATURE,"HxCFEDA");
+	strcpy(dacs->DAHEADERSIGNATURE,"HxCFEDA");
 	dacs->cmd_code=1;
 	dacs->parameter_0 = (unsigned char)((lba>>0)&0xFF);
 	dacs->parameter_1 = (unsigned char)((lba>>8)&0xFF);
@@ -255,7 +255,7 @@ int media_write(uint32 sector, uint8 *buffer, uint32 sector_count)
 
 	for(i=0;i<sector_count;i++)
 	{
-		if((sector-last_setlbabase)>=8)
+		if( sector - last_setlbabase >=8)
 		{
 			last_setlbabase=sector;
 			setlbabase(sector);
@@ -485,7 +485,7 @@ char save_cfg_file(ui_context * uicontext,unsigned char * sdfecfg_file, int pre_
 				dbg_printf("V1 config file format\n");
 				#endif
 
-				cfgfile_ptr = (cfgfile * )cfgfile_header;
+				cfgfile_ptr = (cfgfile * )sdfecfg_file;
 
 				number_of_slot = 1;
 
@@ -597,7 +597,7 @@ char save_cfg_file(ui_context * uicontext,unsigned char * sdfecfg_file, int pre_
 				cfgfile_ptr->number_of_slot = number_of_slot;
 				cfgfile_ptr->slot_index = slot_index;
 
-				if (fl_fswrite((unsigned char*)cfgfile_header, 1,0, cfg_file_handle) != 1)
+				if (fl_fswrite((unsigned char*)sdfecfg_file, 1,0, cfg_file_handle) != 1)
 				{
 					#ifdef DEBUG
 					dbg_printf("fl_fswrite error : header %d !\n",0);
@@ -617,7 +617,7 @@ char save_cfg_file(ui_context * uicontext,unsigned char * sdfecfg_file, int pre_
 
 				number_of_slot = 1;
 
-				cfgfile_ptr=(cfgfile * )cfgfile_header;
+				cfgfile_ptr=(cfgfile * )sdfecfg_file;
 
 				slot_index = 1;
 
@@ -674,7 +674,7 @@ char save_cfg_file(ui_context * uicontext,unsigned char * sdfecfg_file, int pre_
 
 				cfgfile_ptr->slot_index = 0;
 
-				if (fl_fswrite((unsigned char*)cfgfile_header, 1,0, cfg_file_handle) != 1)
+				if (fl_fswrite((unsigned char*)sdfecfg_file, 1,0, cfg_file_handle) != 1)
 				{
 					#ifdef DEBUG
 					dbg_printf("fl_fswrite error : header %d !\n",0);
@@ -879,28 +879,31 @@ int getext(char * path,char * exttodest)
 
 void print_help()
 {
-	clear_list(0);
+	int i;
+	int key;
 
-	hxc_print(LEFT_ALIGNED,0,HELP_Y_POS, (char*)help_scr1_msg);
+	i = 0;
 
-	while(wait_function_key()!=FCT_SELECT_FILE_DRIVEA);
+	key = FCT_NO_FUNCTION;
 
-	clear_list(0);
+	while(help_pages[i].txt && key!=FCT_ESCAPE)
+	{
+		clear_list(0);
 
-	hxc_print(LEFT_ALIGNED,0,HELP_Y_POS, (char*)help_scr2_msg);
+		hxc_print(help_pages[i].align,0,HELP_Y_POS, (char*)help_pages[i].txt);
 
-	while(wait_function_key()!=FCT_SELECT_FILE_DRIVEA);
+		do
+		{
+			key = wait_function_key();
+		}while(key!=FCT_SELECT_FILE_DRIVEA && key!=FCT_ESCAPE);
 
-	clear_list(0);
-
-	hxc_print(CENTER_ALIGNED,0,HELP_Y_POS, (char*)help_scr3_msg);
-
-	while(wait_function_key()!=FCT_SELECT_FILE_DRIVEA);
+		i++;
+	}
 }
 
 void ui_savereboot(ui_context * uicontext,int preselected_slot)
 {
-	hxc_printf_box("Saving selection and restart...");
+	hxc_printf_box((char*)save_and_restart_msg);
 	save_cfg_file(uicontext,cfgfile_header,preselected_slot);
 	restore_box();
 	hxc_printf_box((char*)reboot_msg);
@@ -911,7 +914,7 @@ void ui_savereboot(ui_context * uicontext,int preselected_slot)
 
 void ui_save(ui_context * uicontext)
 {
-	hxc_printf_box("Saving selection...");
+	hxc_printf_box((char*)save_msg);
 	save_cfg_file(uicontext,cfgfile_header,-1);
 	restore_box();
 }

@@ -79,6 +79,6 @@ fat_cache.o: ../fat32/fat_cache.c
 	$(CC) -o $@ -c $< $(CFLAGS)
 
 clean:
-	rm -rf *.o *.adf *.ADF *.map $(EXEC) *.bin
+	rm -rf *.o *.adf *.ADF *.HFE *.map $(EXEC) *.bin
 
 .PHONY: clean

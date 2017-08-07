@@ -181,7 +181,37 @@ int fatfs_entry_is_dir(struct fat_dir_entry *entry)
 //-----------------------------------------------------------------------------
 int fatfs_entry_is_file(struct fat_dir_entry *entry)
 {
-    if (entry->Attr & FILE_TYPE_FILE)
+    if ( !( entry->Attr & ( FILE_ATTR_DIRECTORY | FILE_ATTR_VOLUME_ID ) ) )
+        return 1;
+    else
+        return 0;
+}
+//-----------------------------------------------------------------------------
+// fatfs_entry_is_readonly: Returns 1 if write protected
+//-----------------------------------------------------------------------------
+int fatfs_entry_is_readonly(struct fat_dir_entry *entry)
+{
+    if (entry->Attr & FILE_ATTR_READ_ONLY)
+        return 1;
+    else
+        return 0;
+}
+//-----------------------------------------------------------------------------
+// fatfs_entry_is_readonly: Returns 1 if hidden
+//-----------------------------------------------------------------------------
+int fatfs_entry_is_hidden(struct fat_dir_entry *entry)
+{
+    if (entry->Attr & FILE_ATTR_HIDDEN)
+        return 1;
+    else
+        return 0;
+}
+//-----------------------------------------------------------------------------
+// fatfs_entry_is_system: Returns 1 if system
+//-----------------------------------------------------------------------------
+int fatfs_entry_is_system(struct fat_dir_entry *entry)
+{
+    if (entry->Attr & FILE_ATTR_SYSTEM)
         return 1;
     else
         return 0;

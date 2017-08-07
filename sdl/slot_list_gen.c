@@ -31,6 +31,9 @@
 #include <string.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <ctype.h>
+
+#include "hardware.h"
 
 #include "cfg_file.h"
 
@@ -173,13 +176,61 @@ int get_slot_from_cluster(ui_context * uicontext,unsigned long cluster)
 	return -1;
 }
 
+int scan_tree_slot(ui_context * uicontext,FILE * fout)
+{
+	struct fs_dir_ent dir_entry;
+	FL_DIR file_list_status;
+	int pathlen,slot;
+
+	fl_opendir(scanfolderpath, &file_list_status);
+	while(!fl_readdir(&file_list_status, &dir_entry))
+	{
+		if(dir_entry.is_dir)
+		{
+			#ifdef DEBUG
+			printf("Folder Entry : %s Cluster 0x%.8X\n",dir_entry.filename,ENDIAN_32BIT(dir_entry.cluster));
+			#endif
+
+			if(strcmp(dir_entry.filename,".") && strcmp(dir_entry.filename,".."))
+			{
+				pathlen = strlen(scanfolderpath);
+				strcat(scanfolderpath,"/");
+				strcat(scanfolderpath,dir_entry.filename);
+				if( scan_tree_slot( uicontext, fout ) )
+					return 1;
+				scanfolderpath[pathlen] = 0;
+			}
+		}
+		else
+		{
+			#ifdef DEBUG
+			printf("File Entry : %s Size:%d Cluster 0x%.8X\n",dir_entry.filename,ENDIAN_32BIT(dir_entry.size),ENDIAN_32BIT(dir_entry.cluster));
+			#endif
+
+			slot = get_slot_from_cluster(uicontext,ENDIAN_32BIT(dir_entry.cluster));
+
+			if( slot >= 0 )
+			{
+				// Mark it as found... (good)
+				uicontext->change_map[slot>>3] |= (0x80 >> (slot&7));
+
+				// If found...
+				if(fout)
+					fprintf(fout,"%.5d:%s/%s\r\n",slot,scanfolderpath,dir_entry.filename);
+
+				printf("Slot %d:%s/%s\n",slot,scanfolderpath,dir_entry.filename);
+			}
+		}
+	}
+	return 0;
+}
+
 int check_slots(ui_context * uicontext,char * outputfile,int fix)
 {
 	char tmp_str[81];
 	disk_in_drive_v2 * drive_slots_ptr;
 	int slotnumber;
 	int drive,errorcnt;
-	char fullpath[1024];
 	FILE * fout;
 
 	drive = 0;
@@ -199,31 +250,22 @@ int check_slots(ui_context * uicontext,char * outputfile,int fix)
 
 	printf("Now checking and listing all slots...\n");
 
+	scan_tree_slot(uicontext,fout);
+
+	// Check that all slot have been found
 	for ( slotnumber = 1; slotnumber < uicontext->config_file_number_max_of_slot; slotnumber++ )
 	{
-		memset(tmp_str,0,sizeof(tmp_str));
-		drive_slots_ptr = &disks_slots[ (slotnumber*uicontext->number_of_drive) + drive];
-		if( drive_slots_ptr->size )
+		if( (uicontext->slot_map[slotnumber>>3] & (0x80 >> (slotnumber&7))) )
 		{
-			memcpy(tmp_str,&drive_slots_ptr->name,MAX_SHORT_NAME_LENGHT);
-
-			#ifdef DEBUG
-			printf("%.4d : %s \tSize : %d Bytes \tCluster:0x%.8X\n",slotnumber,tmp_str,drive_slots_ptr->size,drive_slots_ptr->firstCluster);
-			#endif
-
-			scanfolderpath[0] = 0;
-			if(get_path_from_cluster(fullpath, drive_slots_ptr->firstCluster))
+			if( !(uicontext->change_map[slotnumber>>3] & (0x80 >> (slotnumber&7))) )
 			{
-				if(fout)
-					fprintf(fout,"%.5d:%s\n",slotnumber,fullpath);
-
-				printf("Slot %d:%s\n",slotnumber,fullpath);
-			}
-			else
-			{
-				errorcnt++;
+				// Bad Slot !
+				memset(tmp_str,0,sizeof(tmp_str));
+				drive_slots_ptr = &disks_slots[ (slotnumber*uicontext->number_of_drive) + drive];
+				memcpy(tmp_str,&drive_slots_ptr->name,MAX_SHORT_NAME_LENGHT);
 
 				printf("Slot %d:%s -> ERROR ! Not found ! Bad Slot Entry !\n",slotnumber,tmp_str);
+				errorcnt++;
 				if(fix)
 				{
 					printf("Clear Slot %d\n",slotnumber);
@@ -231,6 +273,10 @@ int check_slots(ui_context * uicontext,char * outputfile,int fix)
 					uicontext->slot_map[slotnumber>>3] &= ~(0x80 >> (slotnumber&7));
 					uicontext->change_map[slotnumber>>3] |= (0x80 >> (slotnumber&7));
 				}
+			}
+			else
+			{
+				uicontext->change_map[slotnumber>>3] &= ~(0x80 >> (slotnumber&7));
 			}
 		}
 	}
@@ -292,11 +338,12 @@ int insert_slot_list(char * inputfile)
 	FILE * fin;
 	int j,drive;
 	FL_FILE * slotfile;
-	uicontext = &g_ui_ctx;
 	int slotnumber;
 	disk_in_drive_v2_long DirectoryEntry;
 
 	drive = 0;
+
+	uicontext = &g_ui_ctx;
 
 	memset( uicontext,0,sizeof(ui_context));
 	strcpy( uicontext->currentPath, "/" );
@@ -325,7 +372,6 @@ int insert_slot_list(char * inputfile)
 			memset(&DirectoryEntry,0,sizeof(DirectoryEntry));
 			if(fgets(linebuffer, sizeof(linebuffer), fin))
 			{
-				printf("%s",linebuffer);
 				filename = strchr ( linebuffer, ':' );
 				if(filename)
 				{
@@ -350,9 +396,9 @@ int insert_slot_list(char * inputfile)
 						slotnumber = atoi(linebuffer);
 						if(slotnumber < uicontext->config_file_number_max_of_slot )
 						{
-							printf("Insert slot %d\n",slotnumber);
+							printf("Slot %d : Set to %s\n",slotnumber,filename);
 
-							DirectoryEntry.attributes=0x00;
+							DirectoryEntry.attributes = slotfile->attributes;
 
 							// Get the file name extension.
 							getext(slotfile->filename,(char*)&DirectoryEntry.type);
@@ -385,6 +431,7 @@ int insert_slot_list(char * inputfile)
 						{
 							printf("Error : Can't insert slot %d - Space not available into the cfg file !\n",slotnumber);
 						}
+
 						fl_fclose(slotfile);
 					}
 				}
@@ -430,11 +477,57 @@ int clear_all_slots()
 	return 0;
 }
 
-int scan_tree(ui_context * uicontext,char * path, unsigned long cluster)
+char * supportedformat[]=
+{
+	"adf",
+	"st",
+	"hfe",
+	"img",
+	"dsk",
+	0
+};
+
+int strcmpi(char* str1,char* str2)
+{
+	int i;
+
+	i = 0;
+	while( (tolower(str1[i]) == tolower(str2[i]))  && str1[i] && str2[i])
+	{
+		i++;
+	}
+
+	if( !str1[i] && !str2[i] )
+	{
+		return 0;
+	}
+
+	return 1;
+}
+
+int isSupported(char * ext)
+{
+	int i;
+
+	i = 0;
+	strlwr(ext);
+
+	while(supportedformat[i])
+	{
+		if(!strcmp(supportedformat[i],ext))
+			return 1;
+		i++;
+	}
+	return 0;
+}
+
+int scan_tree(ui_context * uicontext)
 {
 	struct fs_dir_ent dir_entry;
 	FL_DIR file_list_status;
-	int pathlen,slot;
+	int pathlen,slot,slotnumber,j;
+	disk_in_drive_v2_long DirectoryEntry;
+	int drive,freeslotfound;
 
 	fl_opendir(scanfolderpath, &file_list_status);
 	while(!fl_readdir(&file_list_status, &dir_entry))
@@ -450,7 +543,7 @@ int scan_tree(ui_context * uicontext,char * path, unsigned long cluster)
 				pathlen = strlen(scanfolderpath);
 				strcat(scanfolderpath,"/");
 				strcat(scanfolderpath,dir_entry.filename);
-				if( scan_tree( uicontext, path, cluster) )
+				if( scan_tree( uicontext ) )
 					return 1;
 				scanfolderpath[pathlen] = 0;
 			}
@@ -461,14 +554,107 @@ int scan_tree(ui_context * uicontext,char * path, unsigned long cluster)
 			printf("File Entry : %s Size:%d Cluster 0x%.8X\n",dir_entry.filename,ENDIAN_32BIT(dir_entry.size),ENDIAN_32BIT(dir_entry.cluster));
 			#endif
 
-			slot = get_slot_from_cluster(uicontext,ENDIAN_32BIT(dir_entry.cluster));
-
-			if( slot < 0 )
+			if(strcmpi(dir_entry.filename,"autoboot.hfe"))
 			{
-				// If not found...
-				// Add it.
+
+				slot = get_slot_from_cluster(uicontext,ENDIAN_32BIT(dir_entry.cluster));
+
+				if( slot < 0 )
+				{
+					// If not found...
+					// Add it.
+					// Search a free slot...
+					drive = 0;
+					freeslotfound = 0;
+					slotnumber = 1;
+					// Get the file name extension.
+					getext(dir_entry.filename,(char*)&DirectoryEntry.type);
+					if(isSupported((char*)&DirectoryEntry.type))
+					{
+						printf("Adding %s... ",dir_entry.filename);
+						do
+						{
+							if( !(uicontext->slot_map[slotnumber>>3] & (0x80 >> (slotnumber&7))) )
+							{
+								// Free slot found...
+								uicontext->slot_map[slotnumber>>3]   |= (0x80 >> (slotnumber&7));
+								uicontext->change_map[slotnumber>>3] |= (0x80 >> (slotnumber&7));
+
+								DirectoryEntry.attributes=0x00;
+								if(dir_entry.is_readonly)
+									DirectoryEntry.attributes |= FILE_ATTR_READ_ONLY;
+
+								if(dir_entry.is_system)
+									DirectoryEntry.attributes |= FILE_ATTR_SYSTEM;
+
+								if(dir_entry.is_hidden)
+									DirectoryEntry.attributes |= FILE_ATTR_HIDDEN;
+
+								j = 0;
+								while(j<MAX_LONG_NAME_LENGHT && dir_entry.filename[j])
+								{
+									DirectoryEntry.name[j] = dir_entry.filename[j];
+									j++;
+								}
+
+								DirectoryEntry.name[j] = 0x00;
+
+								DirectoryEntry.firstCluster = ENDIAN_32BIT(dir_entry.cluster) ;
+								DirectoryEntry.size = ENDIAN_32BIT(dir_entry.size);
+
+								memcpy( (void*)&disks_slots[ (slotnumber * uicontext->number_of_drive) + drive ],
+										(void*)&DirectoryEntry,
+										sizeof(disk_in_drive_v2)
+										);
+								freeslotfound = 1;
+
+								printf("to slot %d\n",slotnumber);
+							}
+
+							slotnumber++;
+						}while(slotnumber < uicontext->config_file_number_max_of_slot && !freeslotfound);
+
+						if(!freeslotfound)
+						{
+							printf("\nError : Can't add %s ! No free space into this cfg file !\n",dir_entry.filename);
+						}
+					}
+				}
 			}
 		}
 	}
+	return 0;
+}
+
+int auto_populate_slots()
+{
+	ui_context * uicontext;
+	unsigned char cfgfile_header[512];
+	uicontext = &g_ui_ctx;
+
+	memset( uicontext,0,sizeof(ui_context));
+	strcpy( uicontext->currentPath, "/" );
+
+	init_fdc(0);
+
+	attach_and_init_media();
+
+	printf("Reading HXCSDFE.CFG ...\n");
+
+	cfg_file_handle = fl_fopen("/HXCSDFE.CFG", "r");
+	if (!cfg_file_handle)
+	{
+		printf("ERROR: Can't open HXCSDFE.CFG !");
+		return 0;
+	}
+
+	read_cfg_file(uicontext,(unsigned char*)&cfgfile_header);
+
+	scanfolderpath[0] = 0;
+	scanfolderpath[1] = 0;
+	scan_tree(uicontext);
+
+	save_cfg_file(uicontext,(unsigned char*)&cfgfile_header, -1);
+
 	return 0;
 }

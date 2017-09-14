@@ -14,11 +14,11 @@ EXEC = FFManager
 
 all: $(EXEC)
 	m68k-amigaos-strip -s $(EXEC)
-	exe2adf -i $(EXEC) -a AUTOBOOT_AMIGADOS.ADF -0 >/dev/null
 	$(MAKE) bootblock.bin
-	python adf/mk_adf.py bootblock.bin $(EXEC) AUTOBOOT_TRACKLOAD.ADF
-	disk-analyse AUTOBOOT_TRACKLOAD.ADF AUTOBOOT_TRACKLOAD.HFE
-	disk-analyse AUTOBOOT_AMIGADOS.ADF AUTOBOOT_AMIGADOS.HFE
+	python adf/mk_adf.py bootblock.bin $(EXEC) trackload.bin
+	exe2adf -b trackload.bin -i $(EXEC) -d adf/extra -l $(EXEC) \
+	-a AUTOBOOT.ADF -0 >/dev/null
+	disk-analyse AUTOBOOT.ADF AUTOBOOT.HFE
 
 $(EXEC): entry.o fectrl.o gui_utils.o amiga.o libnix.o math.o crc.o fat_access.o fat_filelib.o fat_misc.o fat_string.o fat_table.o fat_write.o fat_cache.o reboot.o msg_txt.o
 	$(CC) -o $@    $^ $(LDFLAGS)

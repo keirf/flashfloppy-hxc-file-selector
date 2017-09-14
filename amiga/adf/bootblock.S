@@ -13,10 +13,11 @@
 #define LibBase_Version 20
 
 /* Exec library calls */
-#define Exec_AllocMem    -0x0c6
-#define Exec_FreeMem     -0x0d2
-#define Exec_DoIO        -0x1c8
-#define Exec_CacheClearU -0x27c
+#define Exec_FindResident -0x060
+#define Exec_AllocMem     -0x0c6
+#define Exec_FreeMem      -0x0d2
+#define Exec_DoIO         -0x1c8
+#define Exec_CacheClearU  -0x27c
 
 /* IORequest.io_Command values */
 #define CMD_READ   2
@@ -47,6 +48,26 @@
         
         .text
 start:
+        /* Trackload unless FIRE0 or FIRE1 is pressed. */
+        move.b  (0xbfe001).l,d0
+        not.b   d0
+        and.b   #0xc0,d0
+        jeq     .track_load
+
+.dos_load:
+        lea.l   .dos(pc),a1
+        jsr     Exec_FindResident(a6)
+        tst.l   d0
+        jeq     1f
+        move.l  d0,a0
+        move.l  0x16(a0),a0
+        moveq   #0,d0
+        rts
+1:      moveq   #-1,d0
+        rts
+.dos:   .asciz  "dos.library"
+
+.track_load:
         /* Save trackdisk ioreq for later use */
         move.l  a1,-(sp)
 

@@ -47,9 +47,10 @@ def main(argv):
         out_f.write(struct.pack(">L", 0))
     # Write the payload from sector 1 onwards
     out_f.write(pl_dat)
-    # Pad the ADF image to 880kB
-    for x in xrange((901120-len(pl_dat)-512)/4):
-        out_f.write(struct.pack(">L", 0))
-        
+    # If destination is an ADF, pad image to 880kB
+    if "adf" in argv[3]:
+        for x in xrange((901120-len(pl_dat)-512)/4):
+            out_f.write(struct.pack(">L", 0))
+
 if __name__ == "__main__":
     main(sys.argv)

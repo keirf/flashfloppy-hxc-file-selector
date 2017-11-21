@@ -20,7 +20,7 @@ all: $(EXEC)
 	-a AUTOBOOT.ADF -0 >/dev/null
 	disk-analyse AUTOBOOT.ADF AUTOBOOT.HFE
 
-$(EXEC): entry.o fectrl.o errors_def.o gui_utils.o amiga.o libnix.o math.o crc.o fat_access.o fat_filelib.o fat_misc.o fat_string.o fat_table.o fat_write.o fat_cache.o reboot.o msg_txt.o
+$(EXEC): entry.o fectrl.o errors_def.o gui_utils.o amiga.o libnix.o math.o crc.o fat_access.o fat_filelib.o fat_misc.o fat_string.o fat_table.o fat_write.o fat_cache.o reboot.o msg_txt.o menu.o menu_settings.o menu_selectdrive.o menu_commands.o config_file.o media_access.o
 	$(CC) -o $@    $^ $(LDFLAGS)
 
 bootblock.bin: bootblock.o
@@ -46,6 +46,24 @@ gui_utils.o: ../gui_utils.c
 	$(CC) -o $@ -c $< $(CFLAGS)
 
 msg_txt.o: ../msg_txt.c
+	$(CC) -o $@ -c $< $(CFLAGS)
+
+menu.o: ../menu.c
+	$(CC) -o $@ -c $< $(CFLAGS)
+
+menu_settings.o: ../menu_settings.c
+	$(CC) -o $@ -c $< $(CFLAGS)
+
+menu_commands.o: ../menu_commands.c
+	$(CC) -o $@ -c $< $(CFLAGS)
+
+menu_selectdrive.o: ../menu_selectdrive.c
+	$(CC) -o $@ -c $< $(CFLAGS)
+
+media_access.o: ../media_access.c
+	$(CC) -o $@ -c $< $(CFLAGS)
+
+config_file.o: ../config_file.c
 	$(CC) -o $@ -c $< $(CFLAGS)
 
 amiga.o: amiga.c

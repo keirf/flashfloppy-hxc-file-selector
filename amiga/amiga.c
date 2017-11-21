@@ -38,6 +38,8 @@
 
 #include "conf.h"
 #include "types.h"
+#include "cfg_file.h"
+#include "ui_context.h"
 #include "keysfunc_defs.h"
 #include "keys_defs.h"
 #include "keymap.h"
@@ -49,11 +51,11 @@
 #include "crc.h"
 #include "color_table.h"
 #include "mfm_table.h"
+#include "errors_def.h"
+#include "hal.h"
+#include "../graphx/font.h"
 
 uint8_t *screen_buffer;
-uint8_t *screen_buffer_backup;
-uint16_t SCREEN_XRESOL;
-uint16_t SCREEN_YRESOL;
 
 static uint8_t *mfmtobinLUT_L;
 static uint8_t *mfmtobinLUT_H;
@@ -242,7 +244,7 @@ void waitms(int ms)
     delay_ms(ms);
 }
 
-void sleep(int secs)
+void waitsec(int secs)
 {
     while (secs--)
         delay_ms(1000);
@@ -362,7 +364,7 @@ int get_start_unit(char *path)
     int i;
 
     if (start_unit < 0)
-        return -1;
+        return -ERR_DRIVE_NOT_FOUND;
 
     delay_ms(100); /* give all motors time to spin down */
 
@@ -375,7 +377,7 @@ int get_start_unit(char *path)
     }
 
     dbg_printf("get_start_unit : drive not found !\n");
-    return -1;
+    return -ERR_DRIVE_NOT_FOUND;
 }
 
 int jumptotrack(uint8_t t)
@@ -392,7 +394,7 @@ int jumptotrack(uint8_t t)
         delay_ms(3);
         if (steps++ >= 1024) {
             dbg_printf("jumptotrack %d - track 0 not found!!\n", t);
-            return 1;
+            return -ERR_TRACK0_SEEK;
         }
     }
     delay_ms(15);
@@ -409,10 +411,10 @@ int jumptotrack(uint8_t t)
 
     dbg_printf("jumptotrack %d - jump done\n", t);
 
-    return 0;
+    return ERR_NO_ERROR;
 };
 
-static bool_t disk_wait_dma(void)
+static int disk_wait_dma(void)
 {
     unsigned int i;
     for (i = 0; i < 1000; i++) {
@@ -421,7 +423,7 @@ static bool_t disk_wait_dma(void)
         delay_ms(1);
     }
     cust->dsklen = 0x4000; /* no more dma */
-    return (i < 1000);
+    return (i < 1000) ? ERR_NO_ERROR : -ERR_TIMEOUT;
 }
 
 static int readtrack(uint16_t *track, uint16_t size)
@@ -476,13 +478,14 @@ static void BuildCylinder(
     *p_lastbit = lastbit;
 }
 
-uint8_t writesector(uint8_t sectornum, uint8_t *data)
+int writesector(uint8_t sectornum, uint8_t *data)
 {
     uint16_t i, j, mfm_len, retry, retry2, lastbit;
     uint8_t sectorfound;
     uint8_t c;
     uint8_t CRC16_High, CRC16_Low, byte;
     uint8_t sector_header[4];
+    int ret;
 
     dbg_printf("writesector : %d\n",sectornum);
 
@@ -532,8 +535,9 @@ uint8_t writesector(uint8_t sectornum, uint8_t *data)
 
         for (retry = 0; !sectorfound && (retry < 30); retry++) {
 
-            if (!readtrack(track_buffer_rd, 16))
-                return 0;
+            ret = readtrack(track_buffer_rd, 16);
+            if (ret != ERR_NO_ERROR)
+                return ret;
 
             /* Skip past 4489 sync words. */
             i = 0;
@@ -567,19 +571,23 @@ uint8_t writesector(uint8_t sectornum, uint8_t *data)
             /* Found it. Now write the sector out. */
             sectorfound = 1;
             validcache = 0;
-            if (!writetrack(track_buffer_wr, mfm_len))
-                return 0;
+            ret = writetrack(track_buffer_wr, mfm_len);
+            if (ret != ERR_NO_ERROR)
+                return ret;
         }
 
-        if (!sectorfound && jumptotrack(255))
-            hxc_printf_box("ERROR: writesector -> seek fail");
+        if (!sectorfound) {
+            ret = jumptotrack(255);
+            if (ret != ERR_NO_ERROR)
+                return ret;
+        }
     }
 
-    return sectorfound;
+    return sectorfound ? ERR_NO_ERROR : -ERR_MEDIA_WRITE_SECTOR_NOT_FOUND;
 }
 
 
-uint8_t readsector(uint8_t sectornum, uint8_t *data, uint8_t invalidate_cache)
+int readsector(uint8_t sectornum, uint8_t *data, uint8_t invalidate_cache)
 {
     uint16_t i, j;
     uint8_t sectorfound, tc;
@@ -587,11 +595,12 @@ uint8_t readsector(uint8_t sectornum, uint8_t *data, uint8_t invalidate_cache)
     uint8_t CRC16_High, CRC16_Low;
     uint8_t sector_header[8];
     uint8_t sect_num;
+    int ret;
 
     dbg_printf("readsector : %d - %d\n", sectornum, invalidate_cache);
 
     if (sectornum >= MAX_CACHE_SECTOR)
-        return 0;
+        return -ERR_INVALID_PARAMETER;
 
     sector_header[0] = 0xFE; /* IDAM */
     sector_header[1] = 0xFF; /* Track */
@@ -621,8 +630,9 @@ uint8_t readsector(uint8_t sectornum, uint8_t *data, uint8_t invalidate_cache)
             if (!validcache) {
 
                 /* Reload the track buffer. */
-                if (!readtrack(track_buffer_rd, RD_TRACK_BUFFER_SIZE))
-                    return 0;
+                ret = readtrack(track_buffer_rd, RD_TRACK_BUFFER_SIZE);
+                if (ret != ERR_NO_ERROR)
+                    return ret;
                 validcache = 1;
 
                 /* Invalidate the sector-position table. */
@@ -709,21 +719,28 @@ uint8_t readsector(uint8_t sectornum, uint8_t *data, uint8_t invalidate_cache)
             sectorfound = (!CRC16_High && !CRC16_Low);
         }
 
-        if (!sectorfound && jumptotrack(255))
-            hxc_printf_box("ERROR: readsector -> seek fail");
+        if (!sectorfound) {
+            ret = jumptotrack(255);
+            if (ret != ERR_NO_ERROR)
+                return ret;
+        }
     }
 
     if (!sectorfound)
         validcache = 0;
 
-    return sectorfound;
+    return sectorfound ? ERR_NO_ERROR : -ERR_MEDIA_READ_SECTOR_NOT_FOUND;
 }
 
-void init_fdc(int drive)
+int init_fdc(int drive)
 {
     uint16_t i;
+    int ret;
 
     dbg_printf("init_fdc\n");
+
+    if (!test_drive(drive))
+        return -ERR_DRIVE_NOT_FOUND;
 
     /* Select drive, side 0. Don't bother enabling drive motor. */
     drive_select(drive, 0);
@@ -737,15 +754,21 @@ void init_fdc(int drive)
         mfmtobinLUT_H[i] = mfmtobinLUT_L[i] << 4;
     }
 
-    if (jumptotrack(255)) {
-        hxc_printf_box("ERROR: init_fdc drive %d -> failure "
-                       "while seeking the track 00!", drive);
-        lockup();
-    }
+    ret = jumptotrack(255);
+    if (ret != ERR_NO_ERROR)
+        return ret;
 
     delay_ms(200);
     cust->intreq = 2;
+
+    return ERR_NO_ERROR;
 }
+
+void deinit_fdc(void)
+{
+    jumptotrack(40);
+}
+
 
 /****************************************************************************
  *                          Joystick / Keyboard I/O
@@ -992,7 +1015,7 @@ static void c_VBLANK_IRQ(void)
     IRQ_RESET(INT_VBLANK);
 }
 
-int init_display(void)
+int init_display(ui_context *ctx)
 {
     static const uint16_t static_copper[] = {
         0x008e, 0x2c81, /* diwstrt */
@@ -1042,8 +1065,8 @@ int init_display(void)
     cpu_hz = is_pal ? PAL_HZ : NTSC_HZ;
 
     /* 640x256 or 640x200 */
-    SCREEN_XRESOL = 640;
-    SCREEN_YRESOL = (vbl_hz == 50) ? 256 : 200;
+    ctx->SCREEN_XRESOL = 640;
+    ctx->SCREEN_YRESOL = (vbl_hz == 50) ? 256 : 200;
     if (vbl_hz == 60) {
         /* Modify copper with correct DIWSTOP for NTSC. */
         for (p = copper; *p != 0x90; p += 2)
@@ -1051,12 +1074,15 @@ int init_display(void)
         p[1] = 0xf4c1;
     }
 
+    ctx->screen_txt_xsize = ctx->SCREEN_XRESOL / FONT_SIZE_X;
+    ctx->screen_txt_ysize = (ctx->SCREEN_YRESOL / FONT_SIZE_Y) - 1;
+
     /* Make sure the copper has run once through, then enable bitplane DMA. */
     delay_ms(1);
     wait_bos();
     cust->dmacon = DMA_SETCLR | DMA_BPLEN;
 
-    return 0;
+    return ERR_NO_ERROR;
 }
 
 uint8_t set_color_scheme(uint8_t color)
@@ -1078,95 +1104,55 @@ uint8_t set_color_scheme(uint8_t color)
     return color;
 }
 
-void print_char8x8(uint8_t *membuffer, bmaptype *font,
-                   int x, int y, uint8_t c)
+void print_char8x8(ui_context *ctx, int col, int line,
+                   unsigned char c, int mode)
 {
     int j;
-    uint8_t *ptr_src = font->data;
-    uint8_t *ptr_dst = membuffer;
+    uint8_t *ptr_src = font_data;
+    uint8_t *ptr_dst = screen_buffer;
 
-    x >>= 3;
-    ptr_dst += (y * 80) + x;
-    ptr_src += ((c >> 4) * (8*8*2)) + (c & 0xf);
+    if ((col >= ctx->screen_txt_xsize) || (line >= ctx->screen_txt_ysize))
+        return;
+
+    ptr_dst += (line * 80 * 8) + col;
+    ptr_src += c * ((FONT_SIZE_X*FONT_SIZE_Y)/8);
     for (j = 0; j < 8; j++) {
-        *ptr_dst = *ptr_src;
-        ptr_src += 16;
+        *ptr_dst = *ptr_src ^ ((mode & INVERTED) ? 0xff : 0x00);
+        ptr_src += 1;
         ptr_dst += 80;
     }
 }
 
-void display_sprite(uint8_t *membuffer, bmaptype * sprite,int x, int y)
-{
-    int i, j, base_offset;
-    uint16_t k, l;
-    uint16_t *ptr_src = (uint16_t *)sprite->data;
-    uint16_t *ptr_dst = (uint16_t *)membuffer;
-
-    k = 0;
-    l = 0;
-    base_offset = ((y*80)+ ((x>>3)))/2;
-    for (j = 0; j < sprite->Ysize; j++) {
-        l = base_offset + (40*j);
-        for (i = 0;i < (sprite->Xsize/16); i++) {
-            ptr_dst[l] = ptr_src[k];
-            l++;
-            k++;
-        }
-    }
-}
-
-void h_line(int y_pos, uint16_t val)
-{
-    uint16_t *ptr_dst;
-    int i, ptroffset;
-
-    ptr_dst = (uint16_t*)screen_buffer;
-    ptroffset = 40* y_pos;
-
-    for (i = 0; i < 40; i++)
-        ptr_dst[ptroffset+i] = val;
-}
-
-void box(int x_p1, int y_p1, int x_p2, int y_p2,
-         uint16_t fillval, uint8_t fill)
-{
-    uint16_t *ptr_dst;
-    int i, j, ptroffset, x_size;
-
-    ptr_dst = (uint16_t *)screen_buffer;
-
-    x_size = ((x_p2-x_p1)/16)*2;
-
-    ptroffset = 80 * y_p1;
-    for (j = 0; j < (y_p2 - y_p1); j++) {
-        for (i = 0; i < x_size; i++) {
-            ptr_dst[ptroffset+i] = fillval;
-        }
-        ptroffset = 80 * (y_p1+j);
-    }
-}
-
-void invert_line(int x_pos,int y_pos)
+void clear_line(ui_context *ctx, int line, int mode)
 {
     int i, j;
     uint16_t *ptr_dst = (uint16_t *)screen_buffer;
     int ptroffset;
 
+    if (line >= ctx->screen_txt_ysize)
+        return;
+
     for (j = 0; j < 8; j++) {
-        ptroffset = (40 * (y_pos+j)) + x_pos;
+        ptroffset = 40 * (line*8 + j);
         for (i = 0; i < 40; i++)
-            ptr_dst[ptroffset+i] = ptr_dst[ptroffset+i] ^ 0xFFFF;
+            ptr_dst[ptroffset+i] = (mode & INVERTED) ? 0xFFFF : 0x0000;
     }
 }
 
-void save_box(void)
+void invert_line(ui_context *ctx, int line)
 {
-    memcpy(screen_buffer_backup,&screen_buffer[160*70], 8*1024);
-}
+    int i, j;
+    uint16_t *ptr_dst = (uint16_t *)screen_buffer;
+    int ptroffset;
 
-void restore_box(void)
-{
-    memcpy(&screen_buffer[160*70],screen_buffer_backup, 8*1024);
+    if (line >= ctx->screen_txt_ysize)
+        return;
+
+    for (j = 0; j < 8; j++) {
+        ptroffset = 40 * (line*8 + j);
+        for (i = 0; i < 40; i++)
+            ptr_dst[ptroffset+i] ^= 0xFFFF;
+    }
 }
 
 void reboot(void)
@@ -1194,14 +1180,13 @@ int process_command_line(int argc, char *argv[])
     track_buffer_wr = AllocMem(2 * WR_TRACK_BUFFER_SIZE, MEMF_CHIP);
 
     /* Allocate display buffers. */
-    screen_buffer_backup = AllocMem(8*1024, MEMF_ANY);
     screen_buffer = AllocMem(bplsz*planes, MEMF_CHIP|MEMF_CLEAR);
     copper = AllocMem(256, MEMF_CHIP);
 
     /* Fail on any allocation error. */
     if (!mfmtobinLUT_L || !mfmtobinLUT_H
         || !track_buffer_rd || !track_buffer_wr
-        || !screen_buffer_backup || !screen_buffer || !copper)
+        || !screen_buffer || !copper)
         return -1;
 
     /* Find FlashFloppy/HxC drive unit. */

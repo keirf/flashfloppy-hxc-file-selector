@@ -45,18 +45,21 @@
 #include "keys_defs.h"
 #include "keymap.h"
 
-#include "graphx/bmaptype.h"
-
 #include "color_table.h"
 
+#include "cfg_file.h"
+#include "ui_context.h"
 #include "gui_utils.h"
+
+#include "../graphx/font.h"
+
+#include "hal.h"
 
 #include "slot_list_gen.h"
 
-#include "../hxcfeda.h"
+#include "hxcfeda.h"
 
-
-#define VIRT_VERSIONCODE "v3.X.X.Xa"
+#include "errors_def.h"
 
 #define DEPTH    2 /* 1 BitPlanes should be used, gives eight colours. */
 #define COLOURS  2 /* 2^1 = 2                                          */
@@ -82,9 +85,6 @@ SDL_Color   *colors;
 SDL_TimerID sdl_timer_id;
 
 unsigned char * screen_buffer;
-unsigned char * screen_buffer_backup;
-uint16_t SCREEN_XRESOL;
-uint16_t SCREEN_YRESOL;
 
 uint16_t sector_pos[16];
 
@@ -97,6 +97,7 @@ uint32_t virt_lba;
 
 unsigned char * keys_stat;
 unsigned char last_key;
+unsigned char cortexfw;
 
 direct_access_status_sector virtual_hxcfe_status;
 
@@ -104,6 +105,14 @@ char dev_path[512];
 
 static unsigned char datacache[512*16];
 static unsigned char valid_cache;
+
+extern ui_context g_ui_ctx;
+
+static const char HXC_FW_ID[]="HxCFEDA";
+static const char CORTEX_FW_ID[]="CORTEXAD";
+
+static const char VIRT_VERSIONCODE[]="v3.X.X.Xa";
+static const char CORTEX_VIRT_VERSIONCODE[]="v1.05a";
 
 void waitus(int centus)
 {
@@ -115,8 +124,7 @@ void waitms(int ms)
 	SDL_Delay(ms);
 }
 
-#ifdef WIN32
-void sleep(int secs)
+void waitsec(int secs)
 {
 	int i;
 
@@ -125,18 +133,11 @@ void sleep(int secs)
 		waitms(1000);
 	}
 }
-#endif
-
-void alloc_error()
-{
-	hxc_printf_box(0,"ERROR: Memory Allocation Error -> No more free mem ?");
-	for(;;);
-}
 
 int jumptotrack(unsigned char t)
 {
 	track_number = t;
-	return 1;
+	return ERR_NO_ERROR;
 }
 
 int get_start_unit(char * path)
@@ -191,7 +192,7 @@ int write_mass_storage(unsigned long lba, unsigned char * data)
 			if(locked)
 				DeviceIoControl(hMassStorage,(DWORD) FSCTL_UNLOCK_VOLUME, NULL, 0, NULL, 0, &dwNotUsed, NULL);
 
-			return 1;
+			return ERR_NO_ERROR;
 		}
 
 		if(locked)
@@ -201,13 +202,17 @@ int write_mass_storage(unsigned long lba, unsigned char * data)
 	#else
 	if(hMassStorage)
 	{
-		fseeko(hMassStorage,(off_t)lba*(off_t)512,SEEK_SET);
-		fwrite(data,512,1,hMassStorage);
-		return 1;
+		if( fseeko(hMassStorage,(off_t)lba*(off_t)512,SEEK_SET) )
+			return -ERR_MEDIA_WRITE;
+
+		if( fwrite(data,512,1,hMassStorage) != 1 )
+			return -ERR_MEDIA_WRITE;
+
+		return ERR_NO_ERROR;
 	}
 	#endif
 
-	return 0;
+	return -ERR_MEDIA_WRITE;
 }
 
 int read_mass_storage(unsigned long lba, unsigned char * data, int nbsector)
@@ -228,7 +233,7 @@ int read_mass_storage(unsigned long lba, unsigned char * data, int nbsector)
 		SetFilePointer (hMassStorage, lDistLow, &lDistHigh, FILE_BEGIN);
 		if (ReadFile (hMassStorage, data, nbsector*512, &dwNotUsed, NULL))
 		{
-			return 1;
+			return ERR_NO_ERROR;
 		}
 	}
 
@@ -237,23 +242,27 @@ int read_mass_storage(unsigned long lba, unsigned char * data, int nbsector)
 
 	if(hMassStorage)
 	{
-		fseeko(hMassStorage,(off_t)lba*(off_t)512,SEEK_SET);
-		ret = fread(data,nbsector*512,1,hMassStorage);
-		return ret;
+		if( fseeko(hMassStorage,(off_t)lba*(off_t)512,SEEK_SET) )
+			return -ERR_MEDIA_READ;
+
+		if( fread(data,nbsector*512,1,hMassStorage) != 1 )
+			return -ERR_MEDIA_READ;
+		else
+			return ERR_NO_ERROR;
 	}
 	#endif
 
-	return 0;
+	return -ERR_MEDIA_READ;
 }
 
-unsigned char writesector(unsigned char sectornum,unsigned char * data)
+int writesector(unsigned char sectornum,unsigned char * data)
 {
 	direct_access_cmd_sector  * da_cmd;
 
 	valid_cache=0;
 
 	if(track_number!=255)
-		return 0;
+		return -ERR_INVALID_PARAMETER;
 
 	if(!sectornum)
 	{
@@ -290,58 +299,56 @@ unsigned char writesector(unsigned char sectornum,unsigned char * data)
 				virtual_hxcfe_status.last_cmd_status=1;
 			break;
 		}
+
+		return ERR_NO_ERROR;
 	}
 	else
 	{
 		if(sectornum > number_of_sector)
 		{
-			return 0;
+			return -ERR_INVALID_PARAMETER;
 		}
 
 		return write_mass_storage(virtual_hxcfe_status.lba_base + (sectornum - 1), data);
 	}
-
-	return 1;
 }
 
-
-unsigned char readsector(unsigned char sectornum,unsigned char * data,unsigned char invalidate_cache)
+int readsector(unsigned char sectornum,unsigned char * data,unsigned char invalidate_cache)
 {
 	int ret;
 
 	if(track_number!=255)
-		return 0;
+		return -ERR_INVALID_PARAMETER;
 
 	if(!sectornum)
 	{
 		memset(data,0,512);
 		memcpy(data,&virtual_hxcfe_status,sizeof(virtual_hxcfe_status));
+
+		return ERR_NO_ERROR;
 	}
 	else
 	{
 		if(sectornum > number_of_sector)
-		{
-			return 0;
-		}
+			return -ERR_INVALID_PARAMETER;
 
-		ret = 1;
+		ret = ERR_NO_ERROR;
 
 		if(!valid_cache || invalidate_cache)
 		{
 			ret = read_mass_storage(virtual_hxcfe_status.lba_base + (sectornum - 1), datacache, number_of_sector);
-			if(ret)
+			if( ret == ERR_NO_ERROR )
 				valid_cache=0xFF;
 		}
 
-		if(ret)
+		if( ret == ERR_NO_ERROR )
 			memcpy((void*)data,&datacache[(sectornum-1)*512],512);
 
 		return ret;
 	}
-	return 1;
 }
 
-void init_fdc(int drive)
+int init_fdc(int drive)
 {
 	#ifdef WIN32
 	char drv_path[64];
@@ -358,14 +365,30 @@ void init_fdc(int drive)
 	#endif
 
 	memset(&virtual_hxcfe_status,0,sizeof(virtual_hxcfe_status));
-	memcpy((char*)&virtual_hxcfe_status.DAHEADERSIGNATURE,	(const char *)"HxCFEDA",	strlen("HxCFEDA"));
-	memcpy((char*)&virtual_hxcfe_status.FIRMWAREVERSION,	(const char *)VIRT_VERSIONCODE,	strlen(VIRT_VERSIONCODE));
+
+	if(cortexfw)
+	{
+		memcpy((char*)&virtual_hxcfe_status.DAHEADERSIGNATURE, CORTEX_FW_ID, strlen(CORTEX_FW_ID));
+		memcpy((char*)&virtual_hxcfe_status.FIRMWAREVERSION,   CORTEX_VIRT_VERSIONCODE, strlen(CORTEX_VIRT_VERSIONCODE));
+	}
+	else
+	{
+		memcpy((char*)&virtual_hxcfe_status.DAHEADERSIGNATURE, HXC_FW_ID, strlen(HXC_FW_ID));
+		memcpy((char*)&virtual_hxcfe_status.FIRMWAREVERSION,   VIRT_VERSIONCODE, strlen(VIRT_VERSIONCODE));
+	}
+
 	virt_lba = 0;
 	valid_cache = 0;
 	number_of_sector = 9;
 	jumptotrack(255);
+
+	return ERR_NO_ERROR;
 }
 
+void deinit_fdc()
+{
+	close_disk_access();
+}
 /********************************************************************************
 *                          Joystick / Keyboard I/O
 *********************************************************************************/
@@ -391,66 +414,41 @@ unsigned char Keyboard()
 			//printf("k:%x f:%x\n",keysmap[i].keyboard_code,keysmap[i].function_code);
 			return last_key;
 		}
+
 		i++;
 	}
 
 	return last_key | 0x80;
 }
 
-void flush_char()
-{
-}
-
 unsigned char get_char()
 {
-	unsigned char key,i,c;
-	unsigned char function_code,key_code;
-
-	function_code=FCT_NO_FUNCTION;
-	while(!(Keyboard()&0x80))
-	{
-		waitms(1);
-	}
+	int i;
 
 	do
 	{
-		c=1;
-		do
+		SDL_PumpEvents();
+
+		i = 0;
+		while( char_keysmap[i].function_code != 0xFF )
 		{
-			do
+			if(keys_stat[char_keysmap[i].keyboard_code])
 			{
-				key=Keyboard();
-				if(key&0x80)
-				{
-					c=1;
-					waitms(1);
-				}
-			}while(key&0x80);
-			waitms(55);
-			c--;
+				waitms(100);
+				return char_keysmap[i].function_code;
+			}
 
-		}while(c);
-
-		i=0;
-		do
-		{
-			function_code=char_keysmap[i].function_code;
-			key_code=char_keysmap[i].keyboard_code;
 			i++;
-		}while((key_code!=key) && (function_code!=FCT_NO_FUNCTION) );
-
-	}while(function_code==FCT_NO_FUNCTION);
-
-	return function_code;
+		}
+	}while(1);
 }
-
 
 unsigned char wait_function_key()
 {
 	unsigned char key,joy,i,c;
 	unsigned char function_code,key_code;
 
-	function_code=FCT_NO_FUNCTION;
+	function_code = FCT_NO_FUNCTION;
 
 	if( keyup == 1 )
 	{
@@ -522,24 +520,20 @@ unsigned char wait_function_key()
 *                              Display Output
 *********************************************************************************/
 
-void setvideomode(int mode)
-{
-}
-
-int update_screen()
+int update_screen(ui_context * ctx)
 {
 	unsigned char *buffer_dat;
 
 	buffer_dat = (unsigned char *)bBuffer->pixels;
 
 	SDL_LockSurface(bBuffer);
-	memcpy(buffer_dat,screen_buffer,(SCREEN_XRESOL*SCREEN_YRESOL));
+	memcpy(buffer_dat,screen_buffer,(ctx->SCREEN_XRESOL*ctx->SCREEN_YRESOL));
 	SDL_UnlockSurface(bBuffer);
 
 	SDL_BlitSurface( bBuffer, NULL, screen, &rBuffer );
 	SDL_UpdateRect( screen, 0, 0, 0, 0 );
 
-	return 0;
+	return ERR_NO_ERROR;
 }
 
 uint32_t sdl_timer(Uint32 interval, void *param)
@@ -559,7 +553,7 @@ uint32_t sdl_timer(Uint32 interval, void *param)
 		}
 	}
 
-	update_screen();
+	update_screen(&g_ui_ctx);
 
 	return interval;
 }
@@ -575,28 +569,31 @@ void init_timer()
 	}
 }
 
-int init_display()
+int init_display(ui_context * ctx)
 {
-	int i;
+	int i,buffer_size;
 
 	track_number = 0;
 
-	SCREEN_XRESOL = 640;
-	SCREEN_YRESOL = 256;
+	ctx->SCREEN_XRESOL = 1024;
+	ctx->SCREEN_YRESOL = 480;
 
-	screen_buffer = malloc(SCREEN_XRESOL*SCREEN_YRESOL);
+	ctx->screen_txt_xsize = ctx->SCREEN_XRESOL / FONT_SIZE_X;
+	ctx->screen_txt_ysize = ctx->SCREEN_YRESOL / FONT_SIZE_Y;
+
+	buffer_size = ctx->SCREEN_XRESOL * ctx->SCREEN_YRESOL;
+
+	screen_buffer = malloc(buffer_size);
 	if(!screen_buffer)
-		return 1;
+		return -ERR_MEM_ALLOC;
 
-	memset(screen_buffer,0,SCREEN_XRESOL*SCREEN_YRESOL);
-
-	screen_buffer_backup=(unsigned char*)malloc(8*1024*2);
+	memset(screen_buffer,0,buffer_size);
 
 	sdl_timer_id = 0;
 
 	SDL_Init( SDL_INIT_VIDEO | SDL_INIT_TIMER );
 
-	screen = SDL_SetVideoMode( SCREEN_XRESOL, SCREEN_YRESOL, 8, SDL_SWSURFACE);
+	screen = SDL_SetVideoMode( ctx->SCREEN_XRESOL, ctx->SCREEN_YRESOL, 8, SDL_SWSURFACE);
 
 	last_key = 0x00;
 	keys_stat = SDL_GetKeyState(NULL);
@@ -625,10 +622,11 @@ int init_display()
 	}
 	SDL_SetColors(bBuffer, colors, 0, 256);
 
-	update_screen();
+	update_screen(ctx);
 
 	init_timer();
-	return 0;
+
+	return ERR_NO_ERROR;
 }
 
 void disablemousepointer()
@@ -686,131 +684,71 @@ unsigned char set_color_scheme(unsigned char color)
 	return color;
 }
 
-void print_char8x8(unsigned char * membuffer, bmaptype * font,int x, int y,unsigned char c)
+void print_char8x8(ui_context * ctx, int col, int line, unsigned char c, int mode)
 {
 	int i,j;
-	unsigned char *ptr_src;
 	unsigned char *ptr_dst;
+	unsigned char *font;
+	unsigned char set_byte;
 
-	ptr_dst = (unsigned char*)membuffer;
-	ptr_src = (unsigned char*)&font->data[0];
+	ptr_dst = (unsigned char*)screen_buffer;
 
-	if( y < SCREEN_YRESOL && x < SCREEN_XRESOL)
+	if(mode & INVERTED)
+		set_byte = 0x00;
+	else
+		set_byte = 0xFF;
+
+	if(col < ctx->screen_txt_xsize && line < ctx->screen_txt_ysize)
 	{
-		ptr_dst=ptr_dst + ((y*SCREEN_XRESOL)+ x);
-		ptr_src=ptr_src + (((c>>4)*(8*8*2))+(c&0xF));
+		ptr_dst += (((line<<3)*ctx->SCREEN_XRESOL)+ (col<<3));
+		font     = font_data + (c * ((FONT_SIZE_X*FONT_SIZE_Y)/8));
+
 		for(j=0;j<8;j++)
 		{
 			for(i=0;i<8;i++)
 			{
-				if(*ptr_src & (0x80>>i) )
-					ptr_dst[i]= 0xFF;
+				if( *font & (0x80>>i) )
+					ptr_dst[i]= set_byte;
 				else
-					ptr_dst[i]= 0x00;
+					ptr_dst[i]= set_byte ^ 0xFF;
 			}
-			ptr_src=ptr_src+16;
-			ptr_dst=ptr_dst + SCREEN_XRESOL;
+			font++;
+			ptr_dst=ptr_dst + ctx->SCREEN_XRESOL;
 		}
 	}
 
 }
 
-void display_sprite(unsigned char * membuffer, bmaptype * sprite,int x, int y)
+void clear_line(ui_context * ctx,int line,int mode)
 {
-	int i,j,k,l,base_offset;
-	unsigned char *ptr_src;
-	unsigned char *ptr_dst;
+	int i;
 
-	ptr_dst = (unsigned char*)membuffer;
-	ptr_src = (unsigned char*)&sprite->data[0];
-
-	if( y < SCREEN_YRESOL && x < SCREEN_XRESOL)
+	for(i=0;i<ctx->screen_txt_xsize;i++)
 	{
-		k=0;
-		l=0;
-		base_offset=(( y * SCREEN_XRESOL)+ x);
-		for(j=0;j<(sprite->Ysize);j++)
-		{
-			l = base_offset + (SCREEN_XRESOL * j);
-			k = (j * sprite->Xsize) / 8;
-			for(i=0;i<(sprite->Xsize);i++)
-			{
-				if(ptr_src[k + (i>>3)] & (0x80>>(i&7)) )
-					ptr_dst[l + i]= 0xFF;
-				else
-					ptr_dst[l + i]= 0x00;
-			}
-		}
+		print_char8x8(ctx,i,line,' ',mode);
 	}
 }
 
-void h_line(int y_pos,unsigned short val)
-{
-	unsigned char *ptr_dst;
-	int i,ptroffset;
-
-	ptr_dst = screen_buffer;
-	ptroffset = SCREEN_XRESOL * y_pos;
-
-	for(i=0;i< (SCREEN_XRESOL/2);i++)
-	{
-		ptr_dst[ptroffset + (i*2)]=(val>>8)&0xFF;
-		ptr_dst[ptroffset + (i*2) + 1]=(val)&0xFF;
-	}
-}
-
-void box(int x_p1,int y_p1,int x_p2,int y_p2,unsigned short fillval,unsigned char fill)
-{
-	unsigned short *ptr_dst;
-	int i,j,ptroffset,x_size;
-
-	ptr_dst=(unsigned short*)screen_buffer;
-
-	x_size=(x_p2-x_p1);
-
-	ptroffset = SCREEN_XRESOL * y_p1;
-	for(j=0;j<(y_p2-y_p1);j++)
-	{
-		for(i=0;i<x_size/2;i++)
-		{
-			ptr_dst[ptroffset+(i*2)]  =(fillval>>8);
-			ptr_dst[ptroffset+(i*2)+1]=(fillval)&0xFF;
-		}
-		ptroffset = SCREEN_XRESOL * (y_p1+j);
-	}
-
-}
-
-void invert_line(int x_pos,int y_pos)
+void invert_line(ui_context * ctx, int line)
 {
 	int i,j;
 	unsigned char *ptr_dst;
 	int ptroffset;
 
-	if( y_pos < SCREEN_YRESOL && x_pos < SCREEN_XRESOL )
+	if( line < ctx->screen_txt_xsize )
 	{
+		ptr_dst=(unsigned char*)screen_buffer;
 
 		for(j=0;j<8;j++)
 		{
-			ptr_dst=(unsigned char*)screen_buffer;
-			ptroffset=(SCREEN_XRESOL* (y_pos + j))+x_pos;
+			ptroffset=(ctx->SCREEN_XRESOL* ((line<<3) + j));
 
-			for(i=0;i<SCREEN_XRESOL;i++)
+			for(i=0;i<ctx->SCREEN_XRESOL;i++)
 			{
-				ptr_dst[ptroffset+i]=ptr_dst[ptroffset+i]^0xFF;
+				ptr_dst[ptroffset+i] ^= 0xFF;
 			}
 		}
 	}
-}
-
-void save_box()
-{
-	//memcpy(screen_buffer_backup,&screen_buffer[160*70], 8*1024);
-}
-
-void restore_box()
-{
-//	memcpy(&screen_buffer[160*70],screen_buffer_backup, 8*1024);
 }
 
 void reboot()
@@ -835,19 +773,6 @@ void ithandler(void)
 	}
 }
 
-char *strlwr(char *s)
-{
-	unsigned char *s1;
-
-	s1=(unsigned char *)s;
-	while(*s1) {
-	if (isupper(*s1))
-		*s1+='a'-'A';
-	++s1;
-	}
-	return s;
-}
-
 #ifdef DEBUG
 
 void dbg_printf(char * chaine, ...)
@@ -868,7 +793,7 @@ void lockup()
 	dbg_printf("lockup : Sofware halted...\n");
 	#endif
 
-	sleep(2);
+	waitsec(2);
 
 	if(sdl_timer_id)
 		SDL_RemoveTimer(sdl_timer_id);
@@ -953,6 +878,8 @@ void printhelp(char* argv[])
 	printf("  -fixslots\t\t\t\t: Fix the bad slot(s)\n");
 	printf("  -populateslots\t\t\t: Scan all supported file and auto add them into the slots\n");
 	printf("  -clearslots\t\t\t\t: Clear the slots\n");
+	printf("  -cortex \t\t\t\t: Cortex Firmware mode\n");
+
 	printf("\n");
 }
 
@@ -973,6 +900,7 @@ int process_command_line(int argc, char* argv[])
 	printf("under certain conditions;\n\n");
 	printf("%s -help to get the command line options\n\n",argv[0]);
 
+	cortexfw = 0;
 	dev_path[0] = 0;
 
 	if(isOption(argc,argv,"help",0)>0)
@@ -982,6 +910,11 @@ int process_command_line(int argc, char* argv[])
 	else
 	{
 		isOption(argc,argv,"disk",(char*)&dev_path);
+
+		if(isOption(argc,argv,"cortex",0))
+		{
+			cortexfw = 1;
+		}
 
 		inoutfile[0] = 0;
 		if(isOption(argc,argv,"getslots",(char*)&inoutfile))
@@ -1031,7 +964,7 @@ int process_command_line(int argc, char* argv[])
 
 		if(!strlen(dev_path))
 		{
-			printf("\nDisk path not specify !\n");
+			printf("\nMissing SD/USB Disk path !\n");
 			printf("Please use the -disk:[path] option to mount your SD/USB\n\n");
 			return 1;
 		}

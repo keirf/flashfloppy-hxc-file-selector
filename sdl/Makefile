@@ -1,21 +1,42 @@
 CC=gcc
 AS=as
 
-CFLAGS= -O3 -Wall -I . -I .. -I ../fat32 -DFATFS_IS_LITTLE_ENDIAN=1 -DSDLHOST
-#CFLAGS= -O0 -Wall -I . -I .. -I ../fat32 -g -DFATFS_IS_LITTLE_ENDIAN=1 -DDEBUG -DSDLHOST -fsanitize=address  -fno-omit-frame-pointer
+CFLAGS= -O3 -Wall -I . -I .. -I ../fat32 -DFATFS_IS_LITTLE_ENDIAN=1 -DSDLHOST -DCORTEX_FW_SUPPORT
+#CFLAGS= -O0 -Wall -I . -I .. -I ../fat32 -g -DFATFS_IS_LITTLE_ENDIAN=1 -DDEBUG -DSDLHOST #-fsanitize=address  -fno-omit-frame-pointer
 
 LDFLAGS= -s -Wl,-Map,foo.map -lSDL
-#LDFLAGS=  -Wl,-Map,foo.map -lasan -lSDL
+#LDFLAGS=  -Wl,-Map,foo.map  -lSDL -g #-lasan
 
 EXEC=HXCFEMNG
 
 all: $(EXEC)
-	strip -s $(EXEC)
+	#strip -s $(EXEC)
 
-HXCFEMNG:      fectrl.o gui_utils.o sdl_hal.o fat_access.o fat_filelib.o fat_misc.o fat_string.o fat_table.o fat_write.o fat_cache.o msg_txt.o slot_list_gen.o
+HXCFEMNG:      fectrl.o errors_def.o media_access.o config_file.o menu.o menu_settings.o menu_selectdrive.o menu_commands.o gui_utils.o sdl_hal.o fat_access.o fat_filelib.o fat_misc.o fat_string.o fat_table.o fat_write.o fat_cache.o msg_txt.o slot_list_gen.o
 	$(CC) -o $@    $^ $(LDFLAGS)
 
 fectrl.o: ../fectrl.c
+	$(CC) -o $@ -c $< $(CFLAGS)
+
+errors_def.o: ../errors_def.c
+	$(CC) -o $@ -c $< $(CFLAGS)
+
+media_access.o: ../media_access.c
+	$(CC) -o $@ -c $< $(CFLAGS)
+
+config_file.o: ../config_file.c
+	$(CC) -o $@ -c $< $(CFLAGS)
+
+menu.o: ../menu.c
+	$(CC) -o $@ -c $< $(CFLAGS)
+
+menu_settings.o: ../menu_settings.c
+	$(CC) -o $@ -c $< $(CFLAGS)
+
+menu_selectdrive.o: ../menu_selectdrive.c
+	$(CC) -o $@ -c $< $(CFLAGS)
+
+menu_commands.o: ../menu_commands.c
 	$(CC) -o $@ -c $< $(CFLAGS)
 
 gui_utils.o: ../gui_utils.c

@@ -1,6 +1,6 @@
 /*
 //
-// Copyright (C) 2009-2017 Jean-François DEL NERO
+// Copyright (C) 2009-2017 Jean-FranÃ§ois DEL NERO
 //
 // This file is part of the HxCFloppyEmulator file selector.
 //
@@ -25,30 +25,45 @@
 //
 */
 
-enum {
-	FCT_NO_FUNCTION=0,
-	FCT_UP_KEY,
-	FCT_DOWN_KEY,
-	FCT_LEFT_KEY,
-	FCT_RIGHT_KEY,
-	FCT_SELECT_FILE_DRIVEA,
-	FCT_SELECT_FILE_DRIVEB,
-	FCT_SELECT_FILE_DRIVEA_AND_NEXTSLOT,
-	FCT_NEXTSLOT,
-	FCT_PREVSLOT,
-	FCT_SAVE,
-	FCT_REBOOT,
-	FCT_SAVEREBOOT,
-	FCT_CLEARSLOT,
-	FCT_CLEARSLOT_AND_NEXTSLOT,
-	FCT_SELECTSAVEREBOOT,
-	FCT_HELP,
-	FCT_SHOWSLOTS,
-	FCT_OK,
-	FCT_SEARCH,
-	FCT_TOP,
-	FCT_CHGCOLOR,
-	FCT_EMUCFG,
-	FCT_ESCAPE,
-	FCT_QUIT
+#ifdef WIN32
+#pragma pack(1)
+#endif
+
+typedef struct Cortex_cfgfile_
+{
+	uint8_t  undef[22];
+	uint16_t number_of_slot;
+	uint16_t slot_index;
+	uint16_t update_cnt; 
+#ifndef WIN32
+}__attribute__((__packed__)) Cortex_cfgfile;
+#else
+}Cortex_cfgfile;
+#endif
+
+struct Cortex_ShortDirectoryEntry {
+	unsigned char name[12];
+    uint8_t  attributes;
+    uint32_t firstCluster;
+    uint32_t size;
+	unsigned char longName[41];	// boolean
+#ifndef WIN32
+}__attribute__((__packed__));
+#else
 };
+#endif
+
+extern struct Cortex_DirectoryEntry Cortex_directoryEntry;
+
+typedef struct Cortex_disk_in_drive_
+{
+	struct Cortex_ShortDirectoryEntry DirEnt;
+#ifndef WIN32
+}__attribute__((__packed__)) Cortex_disk_in_drive;
+#else
+}Cortex_disk_in_drive;
+#endif
+
+#ifdef WIN32
+#pragma pack()
+#endif

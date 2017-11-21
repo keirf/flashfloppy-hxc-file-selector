@@ -28,6 +28,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 #include <mint/osbind.h>
 #include <time.h>
 #include <vt52.h>
@@ -46,13 +47,18 @@
 #include "keysfunc_defs.h"
 #include "keys_defs.h"
 #include "keymap.h"
-#include "hardware.h"
 
-#include "graphx/bmaptype.h"
-
+#include "cfg_file.h"
+#include "ui_context.h"
 #include "gui_utils.h"
 
+#include "../graphx/font.h"
+
+#include "../hal.h"
+
 #include "atari_hw.h"
+
+#include "errors_def.h"
 
 # define _hz_200  ((unsigned long *) 0x4baL)
 
@@ -70,15 +76,11 @@ unsigned long old_physical_adr;
 volatile unsigned short io_floppy_timeout;
 
 unsigned char * screen_buffer;
-unsigned char screen_buffer_backup[8*1024];
 
 static short  _oldrez = 0xffff;
 
-unsigned short SCREEN_XRESOL;
-unsigned short SCREEN_YRESOL;
 unsigned short LINE_BYTES;					/* number of bytes per line     */
 unsigned short LINE_WORDS;					/* number of words per line     */
-unsigned short LINE_CHARS;					/* number of 8x8 chars per line */
 unsigned short NB_PLANES;					/* number of planes (1:2 colors */
 											/*  4:16 colors, 8: 256 colors) */
 unsigned short CHUNK_WORDS;					/* number of words for a 16-    */
@@ -94,6 +96,8 @@ unsigned char keyup;
 unsigned long timercnt;
 
 WORD fdcDmaMode = 0;
+
+extern ui_context g_ui_ctx;
 
 #ifdef DEBUG
 
@@ -206,7 +210,7 @@ void waitms(int  ms)
 	}
 }
 
-void sleep(int secs)
+void waitsec(int secs)
 {
 	int i;
 
@@ -214,12 +218,6 @@ void sleep(int secs)
 	{
 		waitms(1000);
 	}
-}
-
-void alloc_error()
-{
-	hxc_printf_box("ERROR: Memory Allocation Error -> No more free mem ?");
-	for(;;);
 }
 
 void lockup()
@@ -230,7 +228,7 @@ void lockup()
 
 	for(;;)
 	{
-		sleep(100);
+		waitsec(100);
 	}
 }
 
@@ -261,6 +259,7 @@ void su_fdcRegSet(WORD reg, WORD data)
 	asm_nop();
 	asm_nop();
 }
+
 void su_fdcSendCommandWait(WORD command)
 {
 	MFP *mfp = MFP_BASE;
@@ -426,16 +425,16 @@ void write1sector(WORD sectorNumber, unsigned char *adr)
 	Super(old_ssp);
 }
 
-unsigned char writesector(unsigned char sectornum,unsigned char * data)
+int writesector(unsigned char sectornum,unsigned char * data)
 {
 	valid_cache=0;
 
 	write1sector(sectornum, data);
 
-	return 1;
+	return ERR_NO_ERROR;
 }
 
-unsigned char readsector(unsigned char sectornum,unsigned char * data,unsigned char invalidate_cache)
+int readsector(unsigned char sectornum,unsigned char * data,unsigned char invalidate_cache)
 {
 	if(!valid_cache || invalidate_cache)
 	{
@@ -444,18 +443,19 @@ unsigned char readsector(unsigned char sectornum,unsigned char * data,unsigned c
 	}
 
 	memcpy((void*)data,&datacache[sectornum*512],512);
-	return 1;
 
+	return ERR_NO_ERROR;
 }
 
 int jumptotrack(unsigned char t)
 {
 	g_trackpos = t;
 	Supexec((LONG *) su_jumptotrack);
-	return 1;
+
+	return ERR_NO_ERROR;
 };
 
-void init_fdc(int drive)
+int init_fdc(int drive)
 {
 	#ifdef DEBUG
 	dbg_printf("init_fdc\n");
@@ -464,6 +464,13 @@ void init_fdc(int drive)
 	valid_cache = 0;
 	floppydrive = drive;
 	Supexec((LONG *) su_headinit);
+
+	return ERR_NO_ERROR;
+}
+
+void deinit_fdc()
+{
+	jumptotrack(0);
 }
 
 #else
@@ -478,10 +485,10 @@ int jumptotrack(unsigned char t)
 
 	Floprd( &data, 0, floppydrive, 1, t, 0, 1 );
 
-	return 1;
+	return ERR_NO_ERROR;
 };
 
-unsigned char writesector(unsigned char sectornum,unsigned char * data)
+int writesector(unsigned char sectornum,unsigned char * data)
 {
 	int ret,retry;
 
@@ -495,17 +502,17 @@ unsigned char writesector(unsigned char sectornum,unsigned char * data)
 	ret=1;
 	while(retry && ret)
 	{
-		ret=Flopwr( data, 0, floppydrive, sectornum, 255, 0, 1 );
+		ret = Flopwr( data, 0, floppydrive, sectornum, 255, 0, 1 );
 		retry--;
 	}
 
 	if(!ret)
-		return 1;
+		return ERR_NO_ERROR;
 	else
-		return 0;
+		return -ERR_MEDIA_WRITE;
 }
 
-unsigned char readsector(unsigned char sectornum,unsigned char * data,unsigned char invalidate_cache)
+int readsector(unsigned char sectornum,unsigned char * data,unsigned char invalidate_cache)
 {
 	int ret,retry;
 
@@ -536,18 +543,20 @@ unsigned char readsector(unsigned char sectornum,unsigned char * data,unsigned c
 	}
 
 	if(!ret)
-		return 1;
+		return ERR_NO_ERROR;
 	else
-		return 0;
+		return -ERR_MEDIA_READ;
 }
 
-void init_fdc(int drive)
+int init_fdc(int drive)
 {
 	valid_cache = 0;
 	floppydrive = drive;
 	Floprate( floppydrive, 2);
 
 	Floprd( &datacache, 0, floppydrive, 0, 255, 0, 1 );
+
+	return ERR_NO_ERROR;
 }
 
 #endif
@@ -606,10 +615,6 @@ unsigned char Keyboard()
 	}
 
 	return 0x80;
-}
-
-void flush_char()
-{
 }
 
 unsigned char get_char()
@@ -774,7 +779,7 @@ int install_joy_vector()
 	return 0;
 }
 
-int init_display()
+int  init_display(ui_context * ctx)
 {
 	unsigned long k,i;
 
@@ -790,12 +795,14 @@ int init_display()
 		Setscreen((unsigned char *) -1, (unsigned char *) -1, 1 );
 	}
 
-	SCREEN_XRESOL = V_X_MAX;
-	SCREEN_YRESOL = V_Y_MAX;
+	ctx->SCREEN_XRESOL = V_X_MAX;
+	ctx->SCREEN_YRESOL = V_Y_MAX;
+
+	ctx->screen_txt_xsize = ctx->SCREEN_XRESOL / FONT_SIZE_X;
+	ctx->screen_txt_ysize = ctx->SCREEN_YRESOL / FONT_SIZE_Y;
 
 	LINE_BYTES    = V_BYTES_LIN;
 	LINE_WORDS    = V_BYTES_LIN/2;
-	LINE_CHARS    = SCREEN_XRESOL/8;
 	NB_PLANES     = __aline->_VPLANES;
 	CHUNK_WORDS   = NB_PLANES<<1;
 
@@ -804,7 +811,7 @@ int init_display()
 	PLANES_ALIGNDEC = k;
 
 	screen_buffer = (unsigned char*)Physbase();
-	memset(screen_buffer, 0, SCREEN_YRESOL * LINE_BYTES);
+	memset(screen_buffer, 0, ctx->SCREEN_YRESOL * LINE_BYTES);
 
 	set_color_scheme(0);
 
@@ -814,12 +821,7 @@ int init_display()
 
 	install_joy_vector();
 
-	return 0;
-}
-
-unsigned short get_vid_mode()
-{
-	return 0;
+	return ERR_NO_ERROR;
 }
 
 void disablemousepointer()
@@ -827,112 +829,161 @@ void disablemousepointer()
 
 }
 
-void print_char8x8(unsigned char * membuffer, bmaptype * font,int x, int y,unsigned char c)
+void print_char8x8(ui_context * ctx, int col, int line, unsigned char c, int mode)
 {
-	int j,k;
-	unsigned char *ptr_src;
 	unsigned char *ptr_dst;
-	unsigned long base_offset;
+	unsigned char * font;
 
-	ptr_dst = membuffer;
-	ptr_src = (unsigned char*)&font->data[0];
-
-	k=((c>>4)*(8*8*2))+(c&0xF);
-
-	base_offset=((unsigned long) y*LINE_BYTES) + ((x>>4)<<PLANES_ALIGNDEC) + ((x&8)==8);
-	// in a 16-pixel chunk, there are 2 8-pixel chars, hence the x&8==8
-
-	for(j=0;j<8;j++)
+	if(col < ctx->screen_txt_xsize && line < ctx->screen_txt_ysize)
 	{
-		ptr_dst[base_offset] = ptr_src[k];
-		k=k+(16);
-		base_offset += LINE_BYTES;
-	}
-}
+		col <<= 3;
+		line <<= 3;
 
-void display_sprite(unsigned char * membuffer, bmaptype * sprite,int x, int y)
-{
-	int i,j,k;
-	unsigned short *ptr_src;
-	unsigned short *ptr_dst;
-	unsigned long  base_offset, l;
+		ptr_dst  = screen_buffer + ((unsigned long) line * LINE_BYTES) + ((col>>4)<<PLANES_ALIGNDEC) + ((col&8)==8);
+		font     = font_data + (c * ((FONT_SIZE_X*FONT_SIZE_Y)/8));
 
-	ptr_dst=(unsigned short*)membuffer;
-	ptr_src=(unsigned short*)&sprite->data[0];
-
-	k=0;
-
-	base_offset=( ((unsigned long) y*LINE_BYTES) + ((x>>4)<<PLANES_ALIGNDEC) )/2;
-	for(j=0;j<(sprite->Ysize);j++)
-	{
-		l = base_offset;
-		for (i=0; i<(sprite->Xsize>>4); i++)
+		// in a 16-pixel chunk, there are 2 8-pixel chars, hence the x&8==8
+		if(mode & INVERTED)
 		{
-			ptr_dst[l]=ptr_src[k];
-			l += NB_PLANES;
-			k++;
-		}
-		base_offset += LINE_WORDS;
-	}
+			*ptr_dst = (*font++) ^ 0xFF;
+			ptr_dst += LINE_BYTES;
 
+			*ptr_dst = (*font++) ^ 0xFF;
+			ptr_dst += LINE_BYTES;
+
+			*ptr_dst = (*font++) ^ 0xFF;
+			ptr_dst += LINE_BYTES;
+
+			*ptr_dst = (*font++) ^ 0xFF;
+			ptr_dst += LINE_BYTES;
+
+			*ptr_dst = (*font++) ^ 0xFF;
+			ptr_dst += LINE_BYTES;
+
+			*ptr_dst = (*font++) ^ 0xFF;
+			ptr_dst += LINE_BYTES;
+
+			*ptr_dst = (*font++) ^ 0xFF;
+			ptr_dst += LINE_BYTES;
+
+			*ptr_dst = (*font++) ^ 0xFF;
+			ptr_dst += LINE_BYTES;
+		}
+		else
+		{
+			*ptr_dst = *font++;
+			ptr_dst += LINE_BYTES;
+
+			*ptr_dst = *font++;
+			ptr_dst += LINE_BYTES;
+
+			*ptr_dst = *font++;
+			ptr_dst += LINE_BYTES;
+
+			*ptr_dst = *font++;
+			ptr_dst += LINE_BYTES;
+
+			*ptr_dst = *font++;
+			ptr_dst += LINE_BYTES;
+
+			*ptr_dst = *font++;
+			ptr_dst += LINE_BYTES;
+
+			*ptr_dst = *font++;
+			ptr_dst += LINE_BYTES;
+
+			*ptr_dst = *font++;
+			ptr_dst += LINE_BYTES;
+		}
+	}
 }
 
-void h_line(int y_pos,unsigned short val)
+void clear_line(ui_context * ctx,int line,int mode)
 {
-	unsigned short * ptr_dst;
+	unsigned short *ptr_dst;
 	int i;
 
-	ptr_dst=(unsigned short *) screen_buffer;
-	ptr_dst += (unsigned long) LINE_WORDS * y_pos;
+	if(line < ctx->screen_txt_ysize)
+	{
+		ptr_dst  = (unsigned short *)(screen_buffer + ( line * (LINE_WORDS* 8 * 2) ));
 
-	if(val)
-	{
-		for(i=0; i<LINE_WORDS; i+=NB_PLANES)
+		if(mode & INVERTED)
 		{
-			*(ptr_dst) = val;
-			ptr_dst += NB_PLANES;
+			for(i=0; i<LINE_WORDS; i+=NB_PLANES)
+			{
+				*(ptr_dst) = 0xFFFF;
+				ptr_dst += NB_PLANES;
+				*(ptr_dst) = 0xFFFF;
+				ptr_dst += NB_PLANES;
+				*(ptr_dst) = 0xFFFF;
+				ptr_dst += NB_PLANES;
+				*(ptr_dst) = 0xFFFF;
+				ptr_dst += NB_PLANES;
+				*(ptr_dst) = 0xFFFF;
+				ptr_dst += NB_PLANES;
+				*(ptr_dst) = 0xFFFF;
+				ptr_dst += NB_PLANES;
+				*(ptr_dst) = 0xFFFF;
+				ptr_dst += NB_PLANES;
+				*(ptr_dst) = 0xFFFF;
+				ptr_dst += NB_PLANES;
+			}
 		}
-	}
-	else
-	{
-		for(i=0; i<LINE_WORDS; i++)
+		else
 		{
-			*(ptr_dst) = val;
-			ptr_dst ++;
+			for(i=0; i<LINE_WORDS; i+=NB_PLANES)
+			{
+				*(ptr_dst) = 0x0000;
+				ptr_dst += NB_PLANES;
+				*(ptr_dst) = 0x0000;
+				ptr_dst += NB_PLANES;
+				*(ptr_dst) = 0x0000;
+				ptr_dst += NB_PLANES;
+				*(ptr_dst) = 0x0000;
+				ptr_dst += NB_PLANES;
+				*(ptr_dst) = 0x0000;
+				ptr_dst += NB_PLANES;
+				*(ptr_dst) = 0x0000;
+				ptr_dst += NB_PLANES;
+				*(ptr_dst) = 0x0000;
+				ptr_dst += NB_PLANES;
+				*(ptr_dst) = 0x0000;
+				ptr_dst += NB_PLANES;
+			}
 		}
 	}
 }
 
-void invert_line(int x_pos,int y_pos)
+void invert_line(ui_context * ctx,int line)
 {
-	int i,j;
+	int i;
 	unsigned char  *ptr_dst;
 	unsigned short *ptr_dst2;
 
 	ptr_dst   = screen_buffer;
-	ptr_dst  += (unsigned long) LINE_BYTES* (y_pos);
+	ptr_dst  += (unsigned long) LINE_BYTES * line * FONT_SIZE_Y;
 
 	ptr_dst2 = (unsigned short *)ptr_dst;
 
-	for(j=0;j<8;j++)
+	for(i=0; i<LINE_WORDS; i+=NB_PLANES)
 	{
-		for(i=0; i<LINE_WORDS; i+=1)
-		{
-			//*ptr_dst = (*ptr_dst ^ 0xFFFF);
-			*ptr_dst2 = (*ptr_dst2 ^ 0xFFFF);
-			ptr_dst2++;
-		}
+		*ptr_dst2 = (*ptr_dst2 ^ 0xFFFF);
+		ptr_dst2 += NB_PLANES;
+		*ptr_dst2 = (*ptr_dst2 ^ 0xFFFF);
+		ptr_dst2 += NB_PLANES;
+		*ptr_dst2 = (*ptr_dst2 ^ 0xFFFF);
+		ptr_dst2 += NB_PLANES;
+		*ptr_dst2 = (*ptr_dst2 ^ 0xFFFF);
+		ptr_dst2 += NB_PLANES;
+		*ptr_dst2 = (*ptr_dst2 ^ 0xFFFF);
+		ptr_dst2 += NB_PLANES;
+		*ptr_dst2 = (*ptr_dst2 ^ 0xFFFF);
+		ptr_dst2 += NB_PLANES;
+		*ptr_dst2 = (*ptr_dst2 ^ 0xFFFF);
+		ptr_dst2 += NB_PLANES;
+		*ptr_dst2 = (*ptr_dst2 ^ 0xFFFF);
+		ptr_dst2 += NB_PLANES;
 	}
-}
-
-void save_box()
-{
-	memcpy(screen_buffer_backup,&screen_buffer[160*70], 8*1024);
-}
-
-void restore_box()
-{
-	memcpy(&screen_buffer[160*70],screen_buffer_backup, 8*1024);
 }
 
 void su_reboot()

@@ -42,7 +42,7 @@ RSC=rc.exe
 # PROP Ignore_Export_Lib 0
 # PROP Target_Dir ""
 # ADD BASE CPP /nologo /W3 /GX /O2 /D "WIN32" /D "NDEBUG" /D "_CONSOLE" /D "_MBCS" /YX /FD /c
-# ADD CPP /nologo /W3 /GX /O2 /I "." /I ".." /I "../../fat32" /I "./sdl" /I "../../" /D "WIN32" /D "NDEBUG" /D "_CONSOLE" /D "_MBCS" /D FATFS_IS_LITTLE_ENDIAN=1 /FD /c
+# ADD CPP /nologo /W3 /GX /O2 /I "." /I ".." /I "../../fat32" /I "./sdl" /I "../../" /D "WIN32" /D "NDEBUG" /D "_CONSOLE" /D "_MBCS" /D FATFS_IS_LITTLE_ENDIAN=1 /D "CORTEX_FW_SUPPORT" /FD /c
 # SUBTRACT CPP /YX
 # ADD BASE RSC /l 0x40c /d "NDEBUG"
 # ADD RSC /l 0x40c /d "NDEBUG"
@@ -169,11 +169,35 @@ SOURCE=..\..\fat32\fat_write.h
 # End Group
 # Begin Source File
 
+SOURCE=..\..\config_file.c
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\errors_def.c
+# End Source File
+# Begin Source File
+
 SOURCE=..\..\fectrl.c
 # End Source File
 # Begin Source File
 
 SOURCE=..\..\gui_utils.c
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\media_access.c
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\menu.c
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\menu_selectdrive.c
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\menu_settings.c
 # End Source File
 # Begin Source File
 
@@ -209,7 +233,27 @@ SOURCE=..\..\cfg_file.h
 # End Source File
 # Begin Source File
 
+SOURCE=..\..\config_file.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\cortex_cfg_file.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\errors_def.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\fectrl.h
+# End Source File
+# Begin Source File
+
 SOURCE=..\..\gui_utils.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\hal.h
 # End Source File
 # Begin Source File
 
@@ -222,6 +266,30 @@ SOURCE=..\..\keys_defs.h
 # Begin Source File
 
 SOURCE=..\..\keysfunc_defs.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\media_access.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\menu.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\menu_commands.c
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\menu_commands.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\menu_selectdrive.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\menu_settings.h
 # End Source File
 # Begin Source File
 

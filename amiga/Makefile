@@ -20,7 +20,7 @@ all: $(EXEC)
 	-a AUTOBOOT.ADF -0 >/dev/null
 	disk-analyse AUTOBOOT.ADF AUTOBOOT.HFE
 
-$(EXEC): entry.o fectrl.o gui_utils.o amiga.o libnix.o math.o crc.o fat_access.o fat_filelib.o fat_misc.o fat_string.o fat_table.o fat_write.o fat_cache.o reboot.o msg_txt.o
+$(EXEC): entry.o fectrl.o errors_def.o gui_utils.o amiga.o libnix.o math.o crc.o fat_access.o fat_filelib.o fat_misc.o fat_string.o fat_table.o fat_write.o fat_cache.o reboot.o msg_txt.o
 	$(CC) -o $@    $^ $(LDFLAGS)
 
 bootblock.bin: bootblock.o
@@ -37,6 +37,9 @@ reboot.o: reboot.S
 	$(CC) -o $@ -c $< $(AFLAGS)
 
 fectrl.o: ../fectrl.c
+	$(CC) -o $@ -c $< $(CFLAGS)
+
+errors_def.o: ../errors_def.c
 	$(CC) -o $@ -c $< $(CFLAGS)
 
 gui_utils.o: ../gui_utils.c

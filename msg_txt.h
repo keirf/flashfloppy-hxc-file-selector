@@ -10,7 +10,8 @@ extern const char save_msg[];
 extern const char save_and_restart_msg[];
 extern const char reboot_msg[];
 extern const char title_msg[];
-extern const char command_menu_msg[];
+extern const char copyright_msg[];
+extern const char project_support_msg[];
 
 typedef struct pagedesc_
 {

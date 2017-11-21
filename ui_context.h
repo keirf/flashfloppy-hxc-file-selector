@@ -13,7 +13,6 @@ typedef struct ui_context_
 	int slotselectorpos;
 	int slotselectorpage;
 
-	int read_entry;
 	int config_file_number_max_of_slot;
 	int number_of_drive;
 	int slots_position;
@@ -22,4 +21,18 @@ typedef struct ui_context_
 	int cfg_file_format_version;
 	unsigned char slot_map[512];
 	unsigned char change_map[512];
+
+	char FIRMWAREVERSION[16];
+
+	int SCREEN_XRESOL;
+	int SCREEN_YRESOL;
+	int NUMBER_OF_ENTRIES_ON_DISPLAY;
+	int NUMBER_OF_FILE_ON_DISPLAY;
+
+	int screen_txt_xsize;
+	int screen_txt_ysize;
+
+	int bootdev;
+
+	int firmware_type;
 }ui_context;

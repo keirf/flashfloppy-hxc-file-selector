@@ -1,20 +1,9 @@
 
-##########################
-# You must fill ARCH
-# and C, CFLAGS, LFLAGS
-# before compiling !
-#########################
-
-# Part 1 : Arch
-# Arch is the system used to build the project.
-# Supplied arch : linux-i386, linux-amd64, cygwin
-ARCH             = cygwin
-
 GCCBIN           = m68k-atari-mint-gcc
 GCCOPT           = -Os -I . -I .. -I ../fat32 -DFATFS_IS_LITTLE_ENDIAN=0 -Wall
 GCLOPT           = -Os -nostdlib -Wl,-Map,symbols.map -Wl,--traditional-format -fomit-frame-pointer -m68000
 
-VASMBIN          = build-tools/vbcc/bin-$(ARCH)/vasmm68k_mot
+VASMBIN          = vasmm68k_mot
 VASMOPT          = -Faout -showopt -m68000 -spaces -quiet
 
 # GCC : PRG size about 44054 bytes
@@ -55,7 +44,7 @@ gui_utils.o: ../gui_utils.c
 
 fectrl.o: ../fectrl.c
 	$(C)          $(CFLAGS)        -c $< -o $@
-	
+
 errors_def.o: ../errors_def.c
 	$(C)          $(CFLAGS)        -c $< -o $@
 

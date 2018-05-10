@@ -1,7 +1,7 @@
 
-ARCH=cygwin
+ARCH = linux-amd64
 
-VASM=../build-tools/vbcc/bin-$(ARCH)/vasmm68k_mot
+VASM=vasmm68k_mot
 VASMOPT=-Fbin -showopt -quiet
 NRV2B=../build-tools/nrv2b/nrv2b-$(ARCH)
 NRV2BOPT=
@@ -34,7 +34,7 @@ temp/packed.n2b: ../HXCFEMNG.PRG
 	$(NRV2B) $(NRVOPT) temp/depack_bp temp/packed.n2b
 
 temp/stage2.bin: atari/stage2.s atari/equates.s atari/const.s atari/n2bd.s
-	cd atari && ../$(VASM) $(VASMOPT) -pic -o ../$@ stage2.s
+	cd atari && $(VASM) $(VASMOPT) -pic -o ../$@ stage2.s
 	perl gen-equates.pl > atari/equates.s
 	touch $@
 
@@ -42,7 +42,7 @@ atari/equates.s: temp/packed.n2b
 	perl gen-equates.pl >atari/equates.s
 
 temp/stage1.bin: atari/stage1.s atari/equates.s atari/const.s atari/autoload.s temp/stage2.bin
-	cd atari && ../$(VASM) $(VASMOPT) -pic -o ../$@ stage1.s
+	cd atari && $(VASM) $(VASMOPT) -pic -o ../$@ stage1.s
 
 OUT.ST: temp/stage1.bin temp/stage2.bin temp/packed.n2b
 	perl link.pl

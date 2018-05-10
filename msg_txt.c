@@ -11,14 +11,16 @@
 
 const char startup_msg[]=
 {
-	"FlashFloppy File Selector\n"
+	"HxC File Selector for FlashFloppy\n"
 	"V" VERSIONCODE " - " DATECODE "\n"
 	"\n"
+        "Facebook : https://www.facebook.com/groups/flashfloppy\n"
 	"Email : keir.xen@gmail.com\n"
         "Git : https://github.com/keirf\n"
 	"\n"
         "Based on original HxC Emulator file selector\n"
-	"(c) 2006-2017 HxC2001 / Jean-Francois DEL NERO\n"
+	"(c) 2006-2018 HxC2001 / Jean-Francois DEL NERO\n"
+        "http://hxc2001.com\n"
 	"\n"
 	"\n"
 	">>> Press HELP key for the function key list <<<"
@@ -60,7 +62,7 @@ const char help_scr2_msg[]=
 	"\n"
 	"F1                : Search files in the current folder\n"
 	"                    Type the word to search then enter\n"
-	"                    Excape to abord the search\n"
+	"                    Escape to abord the search\n"
 	"F2                : Change color\n"
 	"F3                : Settings menu\n"
 	"F8                : Reboot\n"
@@ -81,14 +83,14 @@ const char help_scr3_msg[]=
 {
 	"\n"
 	"\n"	
-	"FlashFloppy File Selector\n"
+	"HxC File Selector for FlashFloppy\n"
 	"V" VERSIONCODE " - " DATECODE "\n"
         "\n"
 	"Email : keir.xen@gmail.com\n"
         "Git : https://github.com/keirf\n"
 	"\n"
         "Based on original HxC Emulator file selector\n"
-	"(c) 2006-2017 HxC2001 / Jean-Francois DEL NERO\n"
+	"(c) 2006-2018 HxC2001 / Jean-Francois DEL NERO\n"
 	"\n"
 	"This software uses the\n"
 	"FAT16/32 File IO Library v2.6\n"
@@ -109,5 +111,5 @@ const char cur_folder_msg[] = "Current folder:";
 const char reboot_msg[] = ">>>>>Rebooting...<<<<<";
 const char save_msg[] = "Saving selection...";
 const char save_and_restart_msg[] = "Saving selection and restart...";
-const char title_msg[] = { "FlashFloppy File Selector v" VERSIONCODE};
+const char title_msg[] = { "HxC File Selector v" VERSIONCODE};
 const char copyright_msg[] = "";

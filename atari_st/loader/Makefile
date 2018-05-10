@@ -11,16 +11,7 @@ NRV2BOPT=
 all: OUT.ST
 
 clean:
-	rm -f temp/packed.n2b temp/stage1.bin temp/stage2.bin atari/equates.s temp/depack.prg temp/depack_bp OUT.ST
-
-push-mina: OUT.ST
-	rsync --perms $< Gilles@mina.openvpn:/cygdrive/c/users/Gilles/Desktop
-
-push-gbo-dsi: OUT.ST
-	rsync --perms $< gbouthen@gbo-dsi.openvpn:/cygdrive/c/users/gbouthen/Desktop
-
-push-gbo-pc: OUT.ST
-	rsync --perms $< gbouthenot@gbo-pc.openvpn:/cygdrive/c/users/gbouthenot/Desktop
+	rm -f temp/packed.n2b temp/stage1.bin temp/stage2.bin atari/equates.s temp/depack.prg temp/depack_bp OUT.ST *.HFE
 
 temp/packed.n2b: ../HXCFEMNG.PRG
 	cp ../HXCFEMNG.PRG temp/depack.prg
@@ -46,4 +37,4 @@ temp/stage1.bin: atari/stage1.s atari/equates.s atari/const.s atari/autoload.s t
 
 OUT.ST: temp/stage1.bin temp/stage2.bin temp/packed.n2b
 	perl link.pl
-	hxcfe  -conv:HXC_HFE -finput:$@ -foutput:AUTOBOOT.HFE
+	disk-analyse --format=atari_st $@ AUTOBOOT.HFE

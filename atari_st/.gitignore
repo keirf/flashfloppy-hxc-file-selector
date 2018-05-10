@@ -1,6 +1,6 @@
 /HXCFEMNG.PRG
 /loader/atari/equates.s
 /loader/OUT.ST
-/loader/AUTOBOOT.HFE
+AUTOBOOT.HFE
 /loader/temp
 /symbols.map

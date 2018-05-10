@@ -17,24 +17,18 @@ EXEC             = HXCFEMNG.PRG
 
 .PHONY: all clean push-mina push-gbo-dsi push-gbo-pc
 
-all: $(EXEC)
+all: AUTOBOOT.HFE
 
 clean:
-	rm -rf $(EXEC) *.o *.asm fat32/*.o fat32/*.asm libc/*.o libc/*.asm libc/snprintf/*.o symbols.map
-	cd loader && make clean
+	rm -rf $(EXEC) *.o *.asm fat32/*.o fat32/*.asm libc/*.o libc/*.asm libc/snprintf/*.o symbols.map *.HFE
+	$(MAKE) -C loader clean
 
-push-mina: $(EXEC)
-	rsync --perms $< Gilles@mina.openvpn:/cygdrive/c/data/dropbox/emul/atari/hd/c/tmp/
-
-push-gbo-dsi: $(EXEC)
-	rsync --perms $< gbouthen@gbo-dsi.openvpn:/cygdrive/c/data/dropbox/emul/atari/hd/c/tmp/
-
-push-gbo-pc: $(EXEC)
-	rsync --perms $< gbouthenot@gbo-pc.openvpn:/cygdrive/c/data/dropbox/emul/atari/hd/c/tmp/
+AUTOBOOT.HFE: $(EXEC)
+	$(MAKE) -C loader all
+	mv loader/AUTOBOOT.HFE .
 
 $(EXEC):        libc/mStartupAsmC.o libc/mStartup.o libc/snprintf/snprintf.o  fectrl.o errors_def.o menu.o menu_settings.o menu_selectdrive.o menu_commands.o gui_utils.o atari_st.o media_access.o config_file.o fat_access.o fat_filelib.o fat_misc.o fat_string.o fat_table.o fat_write.o fat_cache.o msg_txt.o
 	$(C)          $(LFLAGS)           $^ -o $@
-	cd loader   && make all
 
 atari_st.o:       atari_st.c
 	$(C)          $(CFLAGS)        -c $< -o $@

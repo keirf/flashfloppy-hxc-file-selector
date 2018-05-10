@@ -12,7 +12,9 @@ AFLAGS += -Wa,--disp-size-default-16 -Wa,--pcrel
 
 EXEC = FFManager
 
-all: $(EXEC)
+all: AUTOBOOT.HFE
+
+AUTOBOOT.HFE: $(EXEC)
 	m68k-amigaos-strip -s $(EXEC)
 	$(MAKE) bootblock.bin
 	python adf/mk_adf.py bootblock.bin $(EXEC) trackload.bin
@@ -102,4 +104,4 @@ fat_cache.o: ../fat32/fat_cache.c
 clean:
 	rm -rf *.o *.adf *.ADF *.HFE *.map $(EXEC) *.bin
 
-.PHONY: clean
+.PHONY: all clean

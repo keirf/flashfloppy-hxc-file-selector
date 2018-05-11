@@ -1,9 +1,11 @@
 
+ARCH = linux-amd64
+
 GCCBIN           = m68k-atari-mint-gcc
 GCCOPT           = -Os -I . -I .. -I ../fat32 -DFATFS_IS_LITTLE_ENDIAN=0 -Wall
 GCLOPT           = -Os -nostdlib -Wl,-Map,symbols.map -Wl,--traditional-format -fomit-frame-pointer -m68000
 
-VASMBIN          = vasmm68k_mot
+VASMBIN          = build-tools/vbcc/bin-$(ARCH)/vasmm68k_mot
 VASMOPT          = -Faout -showopt -m68000 -spaces -quiet
 
 # GCC : PRG size about 44054 bytes

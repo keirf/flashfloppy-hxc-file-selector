@@ -65,15 +65,6 @@ build scripts:
  # INSTALL_DIR="$HOME/atari-mint/install" make m68000-skip-native
 ```
 
-You must also build and install vasm (copy the `vasmm68k_mot`
-executable onto a PATH location):
-```
- # wget http://sun.hasenbraten.de/vasm/release/vasm.tar.gz
- # tar xf vasm.tar.gz
- # cd vasm
- # make CPU=m68k SYNTAX=mot
-```
-
 The atari-mint tools must be on your PATH when you build the selector
 software:
 ```

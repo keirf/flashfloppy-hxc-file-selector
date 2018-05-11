@@ -406,7 +406,7 @@ void read9sectors(unsigned char *adr)
 		su_fdcSendCommandWait(0x88);         /* READ SECTOR, no spinup */
 	}
 
-	Super(old_ssp);
+	SuperToUser(old_ssp);
 }
 
 void write1sector(WORD sectorNumber, unsigned char *adr)
@@ -422,7 +422,7 @@ void write1sector(WORD sectorNumber, unsigned char *adr)
 	su_fdcRegSet(0x84, sectorNumber);
 	su_fdcSendCommandWait(0xa8);        /* WRITE SECTOR, no spinup */
 
-	Super(old_ssp);
+	SuperToUser(old_ssp);
 }
 
 int writesector(unsigned char sectornum,unsigned char * data)

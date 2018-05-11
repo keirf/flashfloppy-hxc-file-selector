@@ -3,7 +3,8 @@ ARCH = linux-amd64
 
 GCCBIN           = m68k-atari-mint-gcc
 GCCOPT           = -Os -I . -I .. -I ../fat32 -DFATFS_IS_LITTLE_ENDIAN=0 -Wall
-GCLOPT           = -Os -nostdlib -Wl,-Map,symbols.map -Wl,--traditional-format -fomit-frame-pointer -m68000
+GCCOPT          += -m68000 -nostdlib -fno-builtin
+GCLOPT           = $(GCCOPT) -Wl,-Map,symbols.map -Wl,--traditional-format
 
 VASMBIN          = build-tools/vbcc/bin-$(ARCH)/vasmm68k_mot
 VASMOPT          = -Faout -showopt -m68000 -spaces -quiet

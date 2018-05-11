@@ -62,6 +62,7 @@ build scripts:
  # mkdir install
  # git clone https://github.com/mikrosk/m68k-atari-mint-build
  # cd m68k-atari-mint-build
+ # git checkout 1fd98b25ceb
  # INSTALL_DIR="$HOME/atari-mint/install" make m68000-skip-native
 ```
 

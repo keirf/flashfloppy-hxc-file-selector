@@ -2,6 +2,7 @@
  * tinynix/math.c
  * 
  * Math functions copied directly from libnix.
+ * They are Public Domain.
  */
 
 asm(

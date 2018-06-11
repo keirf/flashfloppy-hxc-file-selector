@@ -480,10 +480,10 @@ static void BuildCylinder(
 
 int writesector(uint8_t sectornum, uint8_t *data)
 {
-    uint16_t i, j, mfm_len, retry, retry2, lastbit;
+    const uint8_t header[4] = { 0xa1, 0xa1, 0xa1, 0xfb };
+    uint16_t i, j, mfm_len, retry, retry2, lastbit, crc;
     uint8_t sectorfound;
-    uint8_t c;
-    uint8_t CRC16_High, CRC16_Low, byte;
+    uint8_t c, byte;
     uint8_t sector_header[4];
     int ret;
 
@@ -493,12 +493,8 @@ int writesector(uint8_t sectornum, uint8_t *data)
     validcache = 0;
 
     /* Calculate the data CRC. */
-    CRC16_Init(&CRC16_High, &CRC16_Low);
-    for (j = 0; j < 3; j++)
-        CRC16_Update(&CRC16_High, &CRC16_Low, 0xA1); /* sync */
-    CRC16_Update(&CRC16_High, &CRC16_Low, 0xFB); /* DAM */
-    for (j = 0; j < 512; j++)
-        CRC16_Update(&CRC16_High, &CRC16_Low, data[j]); /* data */
+    crc = crc16_ccitt(header, 4, 0xffff);
+    crc = crc16_ccitt(data, 512, crc);
 
     /* MFM: pre-gap */
     for (j = 0; j < 12; j++)
@@ -515,8 +511,8 @@ int writesector(uint8_t sectornum, uint8_t *data)
     BuildCylinder(&track_buffer_wr[i], data, 512, &lastbit);
     i += 512;
     /* MFM: CRC. */
-    BuildCylinder(&track_buffer_wr[i++], &CRC16_High, 1, &lastbit);
-    BuildCylinder(&track_buffer_wr[i++], &CRC16_Low, 1, &lastbit);
+    BuildCylinder(&track_buffer_wr[i], &crc, 2, &lastbit);
+    i += 2;
     /* MFM: post-gap. */
     byte = 0x4E;
     for (j = 0; j < 4; j++)
@@ -549,16 +545,14 @@ int writesector(uint8_t sectornum, uint8_t *data)
                 continue;
 
             /* CRC the ID Address area. */
-            CRC16_Init(&CRC16_High, &CRC16_Low);
-            for (j = 0; j < 3; j++)
-                CRC16_Update(&CRC16_High, &CRC16_Low, 0xA1); /* sync */
+            crc = crc16_ccitt(header, 3, 0xffff); /* sync */
             for (j = 0; j < (1+4+2); j++) {
                 c = MFMTOBIN(track_buffer_rd[i+j]);
-                CRC16_Update(&CRC16_High, &CRC16_Low,c);
+                crc = crc16_ccitt(&c, 1, crc);
             }
 
             /* Good CRC? */
-            if (CRC16_High || CRC16_Low)
+            if (crc)
                 continue;
 
             /* Check the track,head,secno */
@@ -589,10 +583,10 @@ int writesector(uint8_t sectornum, uint8_t *data)
 
 int readsector(uint8_t sectornum, uint8_t *data, uint8_t invalidate_cache)
 {
-    uint16_t i, j;
+    const uint8_t header[4] = { 0xa1, 0xa1, 0xa1, 0xfb };
+    uint16_t i, j, crc;
     uint8_t sectorfound, tc;
     uint8_t retry, retry2;
-    uint8_t CRC16_High, CRC16_Low;
     uint8_t sector_header[8];
     uint8_t sect_num;
     int ret;
@@ -609,14 +603,11 @@ int readsector(uint8_t sectornum, uint8_t *data, uint8_t invalidate_cache)
     sector_header[4] = 0x02; /* Size */
 
     /* Compute the CRC for the IDAM area. */
-    CRC16_Init(&CRC16_High, &CRC16_Low);
-    for (j = 0; j < 3; j++)
-        CRC16_Update(&CRC16_High, &CRC16_Low, 0xA1);
-    for (j = 0; j < 5; j++)
-        CRC16_Update(&CRC16_High, &CRC16_Low, sector_header[j]);
+    crc = crc16_ccitt(header, 3, 0xffff); /* sync */
+    crc = crc16_ccitt(sector_header, 5, crc);
 
-    sector_header[5] = CRC16_High; /* CRC High */
-    sector_header[6] = CRC16_Low; /* CRC Low */
+    sector_header[5] = crc >> 8; /* CRC High */
+    sector_header[6] = crc; /* CRC Low */
 
     sectorfound = 0;
 
@@ -695,28 +686,23 @@ int readsector(uint8_t sectornum, uint8_t *data, uint8_t invalidate_cache)
                 continue;
             dbg_printf("Data mark found (%d)\n", j);
 
-            /* CRC: Sync words. */
-            CRC16_Init(&CRC16_High, &CRC16_Low);
-            for (j = 0; j < 3; j++)
-                CRC16_Update(&CRC16_High, &CRC16_Low, 0xA1);
-
-            /* CRC: DAM. */
-            CRC16_Update(&CRC16_High, &CRC16_Low, 0xFB);
+            /* CRC: Sync words + DAM. */
+            crc = crc16_ccitt(header, 4, 0xffff);
 
             /* Data (copy and CRC). */
             for (j = 0, i++; j < 512; j++, i++) {
                 tc = MFMTOBIN(track_buffer_rd[i]);
                 data[j] = tc;
-                CRC16_Update(&CRC16_High, &CRC16_Low, tc);
             }
+            crc = crc16_ccitt(data, 512, crc);
 
             /* CRC */
             for (j = 0; j < 2; j++, i++) {
                 tc = MFMTOBIN(track_buffer_rd[i]);
-                CRC16_Update(&CRC16_High, &CRC16_Low,tc);
+                crc = crc16_ccitt(&tc, 1, crc);
             }
 
-            sectorfound = (!CRC16_High && !CRC16_Low);
+            sectorfound = !crc;
         }
 
         if (!sectorfound) {

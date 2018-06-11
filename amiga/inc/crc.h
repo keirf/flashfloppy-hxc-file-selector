@@ -1,4 +1,3 @@
 #include "types.h"
 
-void CRC16_Update(uint8_t *CRC16_High, uint8_t *CRC16_Low, uint8_t val);
-void CRC16_Init(uint8_t *CRC16_High, uint8_t *CRC16_Low);
+uint16_t crc16_ccitt(const void *buf, unsigned int len, uint16_t crc);

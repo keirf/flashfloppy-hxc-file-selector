@@ -11,7 +11,7 @@
 
 const char startup_msg[]=
 {
-	"HxC File Selector for FlashFloppy\n"
+	"FlashFloppy/HxC File Selector\n"
 	"V" VERSIONCODE " - " DATECODE "\n"
 	"\n"
         "Facebook : https://www.facebook.com/groups/flashfloppy\n"
@@ -83,9 +83,10 @@ const char help_scr3_msg[]=
 {
 	"\n"
 	"\n"	
-	"HxC File Selector for FlashFloppy\n"
+	"FlashFloppy/HxC File Selector\n"
 	"V" VERSIONCODE " - " DATECODE "\n"
         "\n"
+        "Facebook : https://www.facebook.com/groups/flashfloppy\n"
 	"Email : keir.xen@gmail.com\n"
         "Git : https://github.com/keirf\n"
 	"\n"
@@ -111,5 +112,5 @@ const char cur_folder_msg[] = "Current folder:";
 const char reboot_msg[] = ">>>>>Rebooting...<<<<<";
 const char save_msg[] = "Saving selection...";
 const char save_and_restart_msg[] = "Saving selection and restart...";
-const char title_msg[] = { "HxC File Selector v" VERSIONCODE};
+const char title_msg[] = { "FlashFloppy/HxC Selector v" VERSIONCODE};
 const char copyright_msg[] = "";

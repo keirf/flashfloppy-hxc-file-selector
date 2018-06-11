@@ -480,33 +480,29 @@ static void BuildCylinder(
 
 int writesector(uint8_t sectornum, uint8_t *data)
 {
-    const uint8_t header[4] = { 0xa1, 0xa1, 0xa1, 0xfb };
-    uint16_t i, j, mfm_len, retry, retry2, lastbit, crc;
-    uint8_t sectorfound;
-    uint8_t c, byte;
-    uint8_t sector_header[4];
-    int ret;
+    const uint8_t header[4] = { 0xa1, 0xa1, 0xa1, 0x01 };
+    uint16_t i, j, lastbit, crc;
+    uint8_t byte;
 
     dbg_printf("writesector : %d\n",sectornum);
 
-    i = 0;
-    validcache = 0;
-
     /* Calculate the data CRC. */
     crc = crc16_ccitt(header, 4, 0xffff);
+    crc = crc16_ccitt(&sectornum, 1, crc);
     crc = crc16_ccitt(data, 512, crc);
 
     /* MFM: pre-gap */
-    for (j = 0; j < 12; j++)
-        track_buffer_wr[i++]=0xAAAA;
+    for (i = 0; i < 12; i++)
+        track_buffer_wr[i]=0xAAAA;
     /* MFM: sync */
     track_buffer_wr[i++]=0x4489;
     track_buffer_wr[i++]=0x4489;
     track_buffer_wr[i++]=0x4489;
     lastbit = 0x7FFF;
-    /* MFM: Data Address Mark (0xFB). */
-    byte = 0xFB;
+    /* MFM: Data Address Mark (0x01, secnum). */
+    byte = header[3];
     BuildCylinder(&track_buffer_wr[i++], &byte, 1, &lastbit);
+    BuildCylinder(&track_buffer_wr[i++], &sectornum, 1, &lastbit);
     /* MFM: 512 bytes data. */
     BuildCylinder(&track_buffer_wr[i], data, 512, &lastbit);
     i += 512;
@@ -518,68 +514,9 @@ int writesector(uint8_t sectornum, uint8_t *data)
     for (j = 0; j < 4; j++)
         BuildCylinder(&track_buffer_wr[i++], &byte, 1, &lastbit);
 
-    mfm_len = i;
-
-    /* Waiting for the sector to write. */
-    sector_header[0] = 0xFF; /* track */
-    sector_header[1] = 0x00; /* head */
-    sector_header[2] = sectornum; /* secno */
-
-    sectorfound = 0;
-
-    for (retry2 = 0; !sectorfound && (retry2 < 2); retry2++) {
-
-        for (retry = 0; !sectorfound && (retry < 30); retry++) {
-
-            ret = readtrack(track_buffer_rd, 16);
-            if (ret != ERR_NO_ERROR)
-                return ret;
-
-            /* Skip past 4489 sync words. */
-            i = 0;
-            while ((track_buffer_rd[i] == 0x4489) && (i<8))
-                i++;
-
-            /* IDAM (0xFE)? */
-            if (MFMTOBIN(track_buffer_rd[i]) != 0xFE)
-                continue;
-
-            /* CRC the ID Address area. */
-            crc = crc16_ccitt(header, 3, 0xffff); /* sync */
-            for (j = 0; j < (1+4+2); j++) {
-                c = MFMTOBIN(track_buffer_rd[i+j]);
-                crc = crc16_ccitt(&c, 1, crc);
-            }
-
-            /* Good CRC? */
-            if (crc)
-                continue;
-
-            /* Check the track,head,secno */
-            for (j = 0, i++; j < 3; j++, i++)
-                if (MFMTOBIN(track_buffer_rd[i]) != sector_header[j])
-                    break;
-            if (j != 3)
-                continue;
-
-            /* Found it. Now write the sector out. */
-            sectorfound = 1;
-            validcache = 0;
-            ret = writetrack(track_buffer_wr, mfm_len);
-            if (ret != ERR_NO_ERROR)
-                return ret;
-        }
-
-        if (!sectorfound) {
-            ret = jumptotrack(255);
-            if (ret != ERR_NO_ERROR)
-                return ret;
-        }
-    }
-
-    return sectorfound ? ERR_NO_ERROR : -ERR_MEDIA_WRITE_SECTOR_NOT_FOUND;
+    validcache = 0;
+    return writetrack(track_buffer_wr, i);
 }
-
 
 int readsector(uint8_t sectornum, uint8_t *data, uint8_t invalidate_cache)
 {

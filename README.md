@@ -23,25 +23,26 @@ done to a private path in your home directory, for example:
  # mkdir install
  # git clone https://github.com/bebbo/amigaos-cross-toolchain.git repo
  # cd repo
- # ./toolchain-m68k --prefix=/home/<username>/bebbo/install build
-```
-
-The compiler must be on your PATH when you build the selector software:
-```
- # export PATH=/home/<username>/bebbo/install/bin:$PATH
+ # ./toolchain-m68k --prefix=$HOME/install build
 ```
 
 Building the ADF image from the selector executable requires
 bonefish's exe2adf on your path. Download it
 [here](http://www.exe2adf.com).
 
-To produce the final HFE images from ADF requires disk-analyse on your
-path. Download and build it:
+To produce the final HFE images from ADF requires disk-analyse. Download
+and build it:
 ```
  # git clone https://github.com/keirf/Disk-Utilities.git
  # cd Disk-Utilities
- # make
- # make install
+ # PREFIX=$HOME/install make && make install
+```
+
+The compiler and disk-analyse must be on your PATH when you build
+the selector software:
+```
+ # export PATH=$HOME/install/bin:$PATH
+ # export LD_LIBRARY_PATH=$HOME/install/lib:$LD_LIBRARY_PATH
 ```
 
 To build the HFE image:
@@ -63,17 +64,17 @@ build scripts:
  # git clone https://github.com/mikrosk/m68k-atari-mint-build
  # cd m68k-atari-mint-build
  # git checkout 1fd98b25ceb
- # INSTALL_DIR="$HOME/atari-mint/install" make m68000-skip-native
+ # INSTALL_DIR="$HOME/install" make m68000-skip-native
 ```
 
-The atari-mint tools must be on your PATH when you build the selector
-software:
+The compiler and disk-analyse (see Amiga build instructions above) must be
+on your PATH when you build the selector software:
 ```
- # export PATH=/home/<username>/atari-mint/install/m68000/bin
+ # export PATH=$HOME/install/bin:$PATH
+ # export LD_LIBRARY_PATH=$HOME/install/lib:$LD_LIBRARY_PATH
 ```
 
-To build the HFE image (requires disk-analyse installed, as described
-in the Amiga build instructions above):
+To build the HFE image:
 ```
  # git clone https://github.com/keirf/HxC_FF_File_Selector.git
  # cd HxC_FF_File_Selector/atari_st

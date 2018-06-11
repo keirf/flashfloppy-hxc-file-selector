@@ -1075,7 +1075,7 @@ int init_display(ui_context *ctx)
     }
 
     ctx->screen_txt_xsize = ctx->SCREEN_XRESOL / FONT_SIZE_X;
-    ctx->screen_txt_ysize = (ctx->SCREEN_YRESOL / FONT_SIZE_Y) - 1;
+    ctx->screen_txt_ysize = ctx->SCREEN_YRESOL / FONT_SIZE_Y;
 
     /* Make sure the copper has run once through, then enable bitplane DMA. */
     delay_ms(1);

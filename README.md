@@ -15,15 +15,18 @@ another OS) can likely be made to work quite easily.
 
 ## Building for Amiga
 
-You must build and install bebbo's GCC v6 port for Amiga. This can be
-done to a private path in your home directory, for example:
+You must build and install bebbo's GCC v6 port for Amiga.  GCC has
+prerequisites that are listed in the
+[README](https://github.com/bebbo/amiga-gcc/blob/master/README.md),
+along with instructions on how to install them in various
+environments.  The build can be done to a private path in your home
+directory, for example:
 ```
- # mkdir bebbo
- # cd bebbo
+ # cd $HOME
  # mkdir install
- # git clone https://github.com/bebbo/amigaos-cross-toolchain.git repo
- # cd repo
- # ./toolchain-m68k --prefix=$HOME/install build
+ # git clone https://github.com/bebbo/amiga-gcc
+ # cd amiga-gcc ; make update
+ # make all -j8 PREFIX=$HOME/install
 ```
 
 Building the ADF image from the selector executable requires

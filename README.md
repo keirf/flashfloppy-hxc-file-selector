@@ -1,3 +1,4 @@
+
 # HxC File Selector for FlashFloppy
 
 A modified version of the HxC project's file selector/manager for
@@ -68,6 +69,14 @@ build scripts:
  # cd m68k-atari-mint-build
  # git checkout 1fd98b25ceb
  # INSTALL_DIR="$HOME/install" make m68000-skip-native
+```
+
+#### Ubuntu specific
+Using Vincent Riviere's pre-built packages.
+```
+        LC_ALL=C.UTF-8 add-apt-repository -y ppa:vriviere/ppa && \
+        apt-get update && \
+        apt install -y cross-mint-essentia
 ```
 
 The compiler and disk-analyse (see Amiga build instructions above) must be

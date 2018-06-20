@@ -10,6 +10,7 @@ asm(
 "		.globl	_ldiv;"
 "		.globl	___modsi3;"
 "		.globl	___divsi3;"
+"		.text ; .align 2;"
 
 /* D1.L = D0.L % D1.L signed */
 
@@ -49,6 +50,7 @@ asm(
 
 asm(
 "		.globl	___mulsi3;"
+"		.text ; .align 2;"
 
 /* D0 = D0 * D1 */
 
@@ -77,6 +79,7 @@ asm(
 "		.globl	___umodsi3;"
 "		.globl	___udivsi3;"
 "		.globl	___udivsi4;"
+"		.text ; .align 2;"
 
 /* D1.L = D0.L % D1.L unsigned */
 

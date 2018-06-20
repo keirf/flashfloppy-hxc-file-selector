@@ -94,6 +94,7 @@ uint16_t sector_pos[MAX_CACHE_SECTOR];
 static void c_##name(void) attribute_used;      \
 void name(void);                                \
 asm (                                           \
+"    .text; .align 2                \n"         \
 "_"#name":                          \n"         \
 "    movem.l %d0-%d1/%a0-%a1,-(%sp) \n"         \
 "    jbsr    _c_"#name"              \n"        \
@@ -1086,6 +1087,7 @@ void reboot(void)
 
 void getvbr(void);
 asm (
+    "    .text ; .align 2;    \n"
     "_getvbr:                 \n"
     "    dc.l    0x4e7a0801   \n"     /* movec.l vbr,d0 */
     "    move.l  d0,_m68k_vec \n"

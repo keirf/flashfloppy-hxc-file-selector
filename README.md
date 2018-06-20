@@ -71,12 +71,11 @@ build scripts:
  # INSTALL_DIR="$HOME/install" make m68000-skip-native
 ```
 
-#### Ubuntu specific
-Using Vincent Riviere's pre-built packages.
+On Ubuntu you may instead install Vincent Riviere's pre-built packages:
 ```
-        LC_ALL=C.UTF-8 add-apt-repository -y ppa:vriviere/ppa && \
-        apt-get update && \
-        apt install -y cross-mint-essentia
+ # sudo add-apt-repository ppa:vriviere/ppa
+ # sudo apt update
+ # sudo apt install cross-mint-essential
 ```
 
 The compiler and disk-analyse (see Amiga build instructions above) must be

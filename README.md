@@ -24,7 +24,7 @@ environments.  The build can be done to a private path in your home
 directory, for example:
 ```
  # cd $HOME
- # mkdir install
+ # mkdir -p install
  # git clone https://github.com/bebbo/amiga-gcc
  # cd amiga-gcc ; make update
  # make all -j8 PREFIX=$HOME/install
@@ -58,24 +58,25 @@ To build the HFE image:
 
 ## Building for Atari ST
 
-You must build and install the m68k-atari-mint cross compiler, maintained
-by Vincent Riviere. The simplest method is to use Miro Kropacek's automated
-build scripts:
-```
- # mkdir atari-mint
- # cd atari-mint
- # mkdir install
- # git clone https://github.com/mikrosk/m68k-atari-mint-build
- # cd m68k-atari-mint-build
- # git checkout 1fd98b25ceb
- # INSTALL_DIR="$HOME/install" make m68000-skip-native
-```
-
-On Ubuntu you may instead install Vincent Riviere's pre-built packages:
+This build requires the m68k-atari-mint cross compiler. On Ubuntu you
+can install Vincent Riviere's pre-built packages:
 ```
  # sudo add-apt-repository ppa:vriviere/ppa
  # sudo apt update
  # sudo apt install cross-mint-essential
+```
+
+In other environments, or if a package is unavailable for your version
+of Ubuntu, then you must build the cross compiler from source. The
+simplest method is to use Miro Kropacek's automated build scripts into
+a private path in your home directory:
+```
+ # cd $HOME
+ # mkdir -p install
+ # git clone https://github.com/mikrosk/m68k-atari-mint-build
+ # cd m68k-atari-mint-build
+ # git checkout 1fd98b25ceb
+ # INSTALL_DIR="$HOME/install" make m68000-skip-native
 ```
 
 The compiler and disk-analyse (see Amiga build instructions above) must be

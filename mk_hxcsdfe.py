@@ -10,8 +10,8 @@
 import struct, sys
 
 def main(argv):
-    out_f = open(argv[1], "w")
-    out_f.write(struct.pack("<16s", "HXCFECFGV2.0"))
+    out_f = open(argv[1], "wb")
+    out_f.write(struct.pack("<16s", b"HXCFECFGV2.0"))
     out_f.write(struct.pack("<BBBBBBBBHBBBBBB",
                             0xff, # step_sound
                             0xff, # ihm_sound
@@ -36,7 +36,7 @@ def main(argv):
                                 0)) # pin34_cfg
     out_f.write(struct.pack("<B23s",
                             0,    # drive_b_as_motor_on
-                            ""))  # pad
+                            b"")) # pad
     out_f.write(struct.pack("<IIIIII",
                             2,    # slots_map_position
                             1000, # max_slot_number

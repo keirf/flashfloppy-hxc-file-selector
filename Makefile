@@ -6,7 +6,7 @@ release: all
 	mkdir -p HxC_Compat_Mode/Atari_ST
 	cp amiga/AUTOBOOT.HFE HxC_Compat_Mode/Amiga
 	cp atari_st/AUTOBOOT.HFE HxC_Compat_Mode/Atari_ST
-	python2 ./mk_hxcsdfe.py HxC_Compat_Mode/HXCSDFE.CFG
+	python ./mk_hxcsdfe.py HxC_Compat_Mode/HXCSDFE.CFG
 	cp COPYING_PRE HxC_Compat_Mode/COPYING
 	cat COPYING >>HxC_Compat_Mode/COPYING
 

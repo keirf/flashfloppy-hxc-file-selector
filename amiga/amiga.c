@@ -666,8 +666,10 @@ int init_fdc(int drive)
     if (!test_drive(drive))
         return -ERR_DRIVE_NOT_FOUND;
 
-    /* Select drive, side 0. Don't bother enabling drive motor. */
-    drive_select(drive, 0);
+    /* Select drive, side 0. Don't bother enabling drive motor for DF0.
+     * External drives we keep motor enabled as some external drive enclosures
+     * gate the TRK0 signal when the motor is off.  */
+    drive_select(drive, drive != 0);
     ciab->prb |= CIABPRB_SIDE; /* side 0 */
 
     validcache = 0;

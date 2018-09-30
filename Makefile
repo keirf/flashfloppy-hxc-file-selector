@@ -17,4 +17,4 @@ all:
 clean:
 	$(MAKE) -C amiga $@
 	$(MAKE) -C atari_st $@
-	rm -rf HxC_Compat_mode
+	rm -rf HxC_Compat_Mode

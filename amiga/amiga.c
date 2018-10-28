@@ -28,8 +28,10 @@
  */
 
 #include <exec/execbase.h>
+#include <devices/trackdisk.h>
 #include <proto/exec.h>
 #include <proto/dos.h>
+#include <proto/alib.h>
 
 #include <string.h>
 #include <stdarg.h>
@@ -327,6 +329,7 @@ static UWORD GetLibraryVersion(struct Library *library)
 static bool_t test_drive(int drive)
 {
     bool_t is_emulated_unit;
+    uint8_t ciaapra;
 
     drive_select(drive, 1);
     delay_us(10);
@@ -334,7 +337,8 @@ static bool_t test_drive(int drive)
     /* We let the motor spin down and then re-enable the motor and 
      * almost immediately check if the drive is READY. A real mechanical 
      * drive will need to time to spin back up. */
-    is_emulated_unit = !(ciaa->pra & CIAAPRA_RDY);
+    ciaapra = ~ciaa->pra;
+    is_emulated_unit = (ciaapra & CIAAPRA_RDY) && !(ciaapra & CIAAPRA_CHNG);
 
     drive_select(drive, 0);
     drive_deselect();
@@ -342,15 +346,105 @@ static bool_t test_drive(int drive)
     return is_emulated_unit;
 }
 
+/* Allocate a message port (must be later initialised with InitPort()). */
+static struct MsgPort *AllocPort(void)
+{
+    int sig_bit;
+    struct MsgPort *mp;
+
+    if ((sig_bit = AllocSignal(-1L)) == -1)
+        return NULL;
+
+    mp = AllocMem(sizeof(*mp), MEMF_PUBLIC);
+    if (mp == NULL) {
+        FreeSignal(sig_bit);
+        return NULL;
+    }
+
+    mp->mp_SigBit = sig_bit;
+    mp->mp_SigTask = FindTask(0);
+
+    return mp;
+}
+
+/* Initialise a previously-allocated but currently unused port. */
+static void InitPort(struct MsgPort *mp)
+{
+    UBYTE sig_bit = mp->mp_SigBit;
+    void *sig_task = mp->mp_SigTask;
+
+    memset(mp, 0, sizeof(*mp));
+    
+    mp->mp_Node.ln_Type = NT_MSGPORT;
+    mp->mp_Flags = PA_SIGNAL;
+    mp->mp_SigBit = sig_bit;
+    mp->mp_SigTask = sig_task;
+
+    NewList(&mp->mp_MsgList);
+}
+
+/* Free a previously-allocated but currently unused port. */
+static void FreePort(struct MsgPort *mp)
+{
+    FreeSignal(mp->mp_SigBit);
+    FreeMem(mp, sizeof(*mp));
+}
+
+/* Boot-device IORequest structure. */
+extern struct IOExtTD *TDIOReq;
+
+/* Search for the trackdisk boot device. The strategy is to open each 
+ * trackdisk unit in turn and test for a match on the io_Unit structure. */
+static int trackdisk_get_boot_unit(void)
+{
+    struct MsgPort *mp;
+    struct IOExtTD *td;
+    struct Unit *td_unit;
+    int unit;
+    BYTE rc;
+
+    if ((mp = AllocPort()) == NULL)
+        return 0;
+
+    if ((td = AllocMem(sizeof(*td), MEMF_PUBLIC)) == NULL) {
+        FreePort(mp);
+        return 0;
+    }
+
+    for (unit = 0; unit < 4; unit++) {
+
+        InitPort(mp);
+
+        memset(td, 0, sizeof(*td));
+        td->iotd_Req.io_Message.mn_Node.ln_Type = NT_REPLYMSG;
+        td->iotd_Req.io_Message.mn_ReplyPort = mp;
+        td->iotd_Req.io_Message.mn_Length = sizeof(*td);
+
+        rc = OpenDevice((unsigned char *)"trackdisk.device", unit,
+                        (struct IORequest *)td, 0);
+        if (rc == 0) {
+            td_unit = td->iotd_Req.io_Unit;
+            CloseDevice((struct IORequest *)td);
+            if (td_unit == TDIOReq->iotd_Req.io_Unit)
+                break;
+        }
+    }
+
+    FreeMem(td, sizeof(*td));
+    FreePort(mp);
+
+    return unit & 3;
+}
+
 /* Do the system-friendly bit while AmigaOS is still alive. */
 static int start_unit = -1;
 static void _get_start_unit(void)
 {
     if (!DOSBase) {
-        /* Trackloaded. Assume unit 0. */
-        start_unit = 0;
+        start_unit = trackdisk_get_boot_unit();
         return;
     }
+
     /* NB. On dos.library < v36 we can't get at the program dir or path 
      * (libnix's argv[0] is computed from GetProgramName()). */
     if (GetLibraryVersion((struct Library *)DOSBase) >= 36)

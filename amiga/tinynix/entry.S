@@ -30,6 +30,9 @@
 
         .text
 start:
+        /* Stash trackdisk ioreq (only valid if trackloaded). */
+        move.l  a1,_TDIOReq
+        
         move.l  4,a6
         move.l  a6,_SysBase
 
@@ -101,7 +104,7 @@ start:
 .gfx:   .asciz  "graphics.library"
 .dos:   .asciz  "dos.library"
 
-        .globl _SysBase, _DOSBase, _GfxBase, _WBMsg, _OrigView
+        .globl _SysBase, _DOSBase, _GfxBase, _WBMsg, _OrigView, _TDIOReq
         .align  4
 _SysBase:
         dc.l    0
@@ -112,4 +115,6 @@ _GfxBase:
 _WBMsg:
         dc.l    0
 _OrigView:
+        dc.l    0
+_TDIOReq:
         dc.l    0

@@ -192,8 +192,11 @@ int media_init()
 			strncpy(g_ui_ctx.FIRMWAREVERSION,dass->FIRMWAREVERSION,sizeof(g_ui_ctx.FIRMWAREVERSION));
 			hxc_printf(&g_ui_ctx,LEFT_ALIGNED|INVERTED,0, g_ui_ctx.screen_txt_ysize - 1,"FW %s",g_ui_ctx.FIRMWAREVERSION);
 
-			ret = test_floppy_if();
-			if( ret != ERR_NO_ERROR)
+			count = 0;
+			do {
+				ret = test_floppy_if();
+			} while ((ret != ERR_NO_ERROR) && (++count < 3));
+			if (ret != ERR_NO_ERROR)
 				return ret;
 
 			dass = (direct_access_status_sector *)sector;

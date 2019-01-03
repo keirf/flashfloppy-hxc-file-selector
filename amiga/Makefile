@@ -1,6 +1,6 @@
 CC = m68k-amigaos-gcc
 AS = m68k-amigaos-as
-OBJCOPY = m68k-amigaos-objcopy
+PYTHON = python
 
 CFLAGS += -Os -I./inc -I.. -I../fat32 -nostdlib -DFATFS_IS_LITTLE_ENDIAN=0
 CFLAGS += -m68000 -Wall -Werror -std=gnu99 -msoft-float -fno-builtin
@@ -17,7 +17,7 @@ all: AUTOBOOT.HFE
 AUTOBOOT.HFE: $(EXEC)
 	m68k-amigaos-strip -s $(EXEC)
 	$(MAKE) bootblock.bin
-	python adf/mk_adf.py bootblock.bin $(EXEC) trackload.bin
+	$(PYTHON) adf/mk_adf.py bootblock.bin $(EXEC) trackload.bin
 	exe2adf -b trackload.bin -i $(EXEC) -d adf/extra -l $(EXEC) \
 	-a AUTOBOOT.ADF -0 >/dev/null
 	disk-analyse AUTOBOOT.ADF AUTOBOOT.HFE
@@ -26,8 +26,7 @@ $(EXEC): entry.o fectrl.o errors_def.o gui_utils.o amiga.o libnix.o math.o crc.o
 	$(CC) -o $@    $^ $(LDFLAGS)
 
 bootblock.bin: bootblock.o
-	$(OBJCOPY) -O binary $< $@
-	chmod a-x $@
+	$(PYTHON) adf/amiga_strip_hunks.py $< $@
 
 bootblock.o: adf/bootblock.S
 	$(CC) -o $@ -c $< $(AFLAGS)

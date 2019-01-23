@@ -1000,9 +1000,9 @@ static void take_over_system(void)
     cust->color[0] = colortable[0];
 
     /* Floppy motors off. */
-    ciab->prb = 0xf8;
+    ciab->prb = 0xff;
     ciab->prb = 0x87;
-    ciab->prb = 0x78;
+    ciab->prb = 0xff;
 
     /* Set keyboard serial line to input mode. */
     ciaa->cra &= ~CIACRA_SPMODE;

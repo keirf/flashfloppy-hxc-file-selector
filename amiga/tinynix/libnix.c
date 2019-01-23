@@ -278,10 +278,11 @@ char *strlwr(char *s)
 char *strstr(const char *haystack, const char *needle)
 {
     const char *p = haystack;
+    int sz = strlen(needle);
 
     /* This could be made faster ;) */
     for (p = haystack; *p; p++) {
-        if (strcmp(p, needle))
+        if (!strncmp(p, needle, sz))
             return (char *)p;
     }
 

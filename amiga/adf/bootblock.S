@@ -92,20 +92,7 @@ start:
         tst.b   io_Error(a1)
         jne     .retry
 
-        /* We have loaded code from disk: Flush caches if possible */
-        cmp.w   #37,LibBase_Version(a6) /* exec.lib_version >= 37? */
-        jmi     .nocache
-        jsr     Exec_CacheClearU(a6)
-.nocache:
-
         move.l  (sp),a3         /* a3 = payload data */
-        move.l  (a3),d0
-        cmp.l   #HUNK_HEADER,d0 /* AmigaDOS load file? */
-        jeq     LoadSeg         /* LoadSeg it if so. */
-
-        /* Raw payload: jump directly at it. */
-        addq.l  #8,sp
-        jmp     (a3)
 
 LoadSeg: /* LoadSeg(a3) */
         add.w   #16,a3          /* Skip HUNK_HEADER, string, nr hunks, first */
@@ -161,6 +148,12 @@ hunk_end:                       /* HUNK_END */
         move.l  (sp)+,a1
         move.l  load_len(pc),d0
         jsr     Exec_FreeMem(a6)
+
+        /* We have loaded code from disk: Flush caches if possible */
+        cmp.w   #37,LibBase_Version(a6) /* exec.lib_version >= 37? */
+        jcs     .nocache
+        jsr     Exec_CacheClearU(a6)
+.nocache:
 
         /* Jump at Hunk 0 (must be HUNK_CODE!) */
         move.l  hunks(pc),a0

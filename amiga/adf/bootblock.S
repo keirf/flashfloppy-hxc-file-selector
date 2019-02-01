@@ -160,5 +160,5 @@ hunk_end:                       /* HUNK_END */
         move.l  (sp)+,a1        /* a1 = TDIOReq */
         jmp     (a0)
         
-        .align  4
+        .balign 4
 hunks:

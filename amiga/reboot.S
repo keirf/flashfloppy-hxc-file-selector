@@ -19,7 +19,7 @@ old_exec:
         lea.l   GoAway(pc),a5
         jsr     _LVOSupervisor(a6)
 
-        .align 4                        /* IMPORTANT! Longword align! */
+        .balign 4                        /* IMPORTANT! Longword align! */
 GoAway:
         lea.l   MAGIC_ROMEND,a0         /* (end of ROM) */
         sub.l   MAGIC_SIZEOFFSET(a0),a0 /* (end of ROM)-(ROM size)=PC */

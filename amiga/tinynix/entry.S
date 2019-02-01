@@ -105,7 +105,7 @@ start:
 .dos:   .asciz  "dos.library"
 
         .globl _SysBase, _DOSBase, _GfxBase, _WBMsg, _OrigView, _TDIOReq
-        .align  4
+        .balign 4
 _SysBase:
         dc.l    0
 _DOSBase:

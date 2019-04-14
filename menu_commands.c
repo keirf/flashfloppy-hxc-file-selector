@@ -104,7 +104,7 @@ const menu commands_menu[]=
 //	{"Quit the File selector",          0,                                    -1, (struct menu * )-1, CENTER_ALIGNED},
 //	{"",                                0,                                     0, 0, CENTER_ALIGNED},
 	{"Change display colors",           commnand_menu_chgcolor_cb,             0, 0, CENTER_ALIGNED},
-	{"HxC Drive Settings",              0,                                     0, (struct menu * )&settings_menu, CENTER_ALIGNED},
+	{"Drive Settings",              0,                                     0, (struct menu * )&settings_menu, CENTER_ALIGNED},
 	{"",                                0,                                     0, 0, CENTER_ALIGNED},
 	{"Select drive",                    0,                                     0, (struct menu * )&selectdrive_menu, CENTER_ALIGNED},
 	{"",                                0,                                     0, 0, CENTER_ALIGNED},

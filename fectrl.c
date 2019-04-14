@@ -1004,7 +1004,7 @@ int main(int argc, char* argv[])
 
 	if( ctx->bootdev < 0 )
 	{
-		hxc_printf_box(ctx,"ERROR: HxC Drive not detected !");
+		hxc_printf_box(ctx,"ERROR: FlashFloppy Drive not detected !");
 		lockup();
 	}
 

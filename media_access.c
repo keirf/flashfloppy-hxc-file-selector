@@ -103,6 +103,30 @@ int setlbabase(unsigned long lba)
 	return ret;
 }
 
+int checked_setlbabase(unsigned long lba)
+{
+    int ret;
+    unsigned char sector[512];
+    direct_access_status_sector *dass;
+
+    dass = (direct_access_status_sector *)sector;
+
+    while (last_setlbabase != lba) {
+        ret = setlbabase(lba);
+        if( ret != ERR_NO_ERROR )
+            return ret;
+
+        ret = readsector(0,sector,1);
+        if( ret != ERR_NO_ERROR )
+            return ret;
+
+        if(!strcmp(dass->DAHEADERSIGNATURE,HXC_FW_ID))
+            last_setlbabase = L_INDIAN(dass->lba_base);
+    }
+
+    return ERR_NO_ERROR;
+}
+
 int test_floppy_if()
 {
 	int ret;
@@ -200,9 +224,9 @@ int media_init()
 				return ret;
 
 			dass = (direct_access_status_sector *)sector;
-			last_setlbabase=0;
 
-			ret = setlbabase(last_setlbabase);
+                        last_setlbabase=0xFFFFF000;
+			ret = checked_setlbabase(0);
 			if( ret != ERR_NO_ERROR )
 				return ret;
 
@@ -274,9 +298,6 @@ int media_read(uint32 sector, uint8 *buffer, uint32 sector_count)
 {
 	int ret;
 	uint32 i;
-	direct_access_status_sector * dass;
-
-	dass = (direct_access_status_sector *)buffer;
 
 	#ifdef DEBUG
 	dbg_printf("media_read sector : 0x%.8X, cnt : %d \n",sector,sector_count);
@@ -286,25 +307,11 @@ int media_read(uint32 sector, uint8 *buffer, uint32 sector_count)
 
 	for(i=0;i<sector_count;i++)
 	{
-		do
-		{
-			if((sector-last_setlbabase)>=8)
-			{
-				ret = setlbabase(sector);
-				if( ret != ERR_NO_ERROR )
-					return 0;
-			}
-
-			ret = readsector(0,buffer,0); 
-			if( ret != ERR_NO_ERROR )
-			{
-				hxc_printf_box(&g_ui_ctx,"ERROR: Read ERROR ! fsector %d [Err %d]",(sector-last_setlbabase)+1,ret);
-
-				return 0;
-			}
-			last_setlbabase = L_INDIAN(dass->lba_base);
-
-		}while((sector-L_INDIAN(dass->lba_base))>=8);
+            if((sector-last_setlbabase)>=8) {
+                ret = checked_setlbabase(sector);
+                if( ret != ERR_NO_ERROR )
+                    return 0;
+            }
 
 		ret = readsector((unsigned char)((sector-last_setlbabase)+1),&buffer[i*512],0);
 		if( ret != ERR_NO_ERROR )
@@ -338,13 +345,11 @@ int media_write(uint32 sector, uint8 *buffer, uint32 sector_count)
 
 	for(i=0;i<sector_count;i++)
 	{
-		if( sector - last_setlbabase >=8)
-		{
-			last_setlbabase=sector;
-			ret = setlbabase(sector);
-			if( ret != ERR_NO_ERROR )
-				return 0;
-		}
+            if((sector-last_setlbabase)>=8) {
+                ret = checked_setlbabase(sector);
+                if( ret != ERR_NO_ERROR )
+                    return 0;
+            }
 
 		ret = writesector((unsigned char)((sector-last_setlbabase)+1),buffer);
 		if( ret != ERR_NO_ERROR )

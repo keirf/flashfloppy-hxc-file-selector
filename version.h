@@ -1,2 +1,2 @@
-#define VERSIONCODE "5-FF"
-#define DATECODE "14 April 2019"
+#define VERSIONCODE "6-FF"
+#define DATECODE "7 June 2019"

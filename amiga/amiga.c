@@ -59,6 +59,9 @@
 
 uint8_t *screen_buffer;
 
+static int start_unit = -1;
+static int td_boot_unit = -1;
+
 static uint8_t *mfmtobinLUT_L;
 static uint8_t *mfmtobinLUT_H;
 #define MFMTOBIN(W) (mfmtobinLUT_H[W>>8] | mfmtobinLUT_L[W&0xFF])
@@ -331,6 +334,11 @@ static bool_t test_drive(int drive)
     bool_t is_emulated_unit;
     uint8_t ciaapra;
 
+    /* No need to test a drive we were booted from. This avoids test failure
+     * on unmodded ESCOM boards. */
+    if (drive == td_boot_unit)
+        return TRUE;
+
     drive_select(drive, 1);
     delay_us(10);
 
@@ -425,8 +433,10 @@ static int trackdisk_get_boot_unit(void)
         if (rc == 0) {
             td_unit = td->iotd_Req.io_Unit;
             CloseDevice((struct IORequest *)td);
-            if (td_unit == TDIOReq->iotd_Req.io_Unit)
+            if (td_unit == TDIOReq->iotd_Req.io_Unit) {
+                td_boot_unit = unit;
                 break;
+            }
         }
     }
 
@@ -437,7 +447,6 @@ static int trackdisk_get_boot_unit(void)
 }
 
 /* Do the system-friendly bit while AmigaOS is still alive. */
-static int start_unit = -1;
 static void _get_start_unit(void)
 {
     if (!DOSBase) {

@@ -20,24 +20,35 @@ STACK_SIZE      equ $1000
 
 ; --------------------------------------------------------------
 start:
-        move.l  4(sp),a5                ;address to basepage
-        move.l  $0c(a5),d0              ;length of text segment
-        add.l   $14(a5),d0              ;length of data segment
-        add.l   $1c(a5),d0              ;length of bss segment
-        add.l   #STACK_SIZE+BASEPAGE_SIZE,d0        ;length of stackpointer+basepage
-        move.l  a5,d1                   ;address to basepage
-        add.l   d0,d1                   ;end of program
+		move.l  4(sp),a5                ;address to basepage
+		move.l  $18(a5),a4              ;address to bss
+		move.l  $1c(a5),d7              ;length of bss
+		move.l  $0c(a5),d0              ;length of text segment
+		add.l   $14(a5),d0              ;length of data segment
+		add.l   d7,d0                   ;length of bss segment
+		add.l   #STACK_SIZE+BASEPAGE_SIZE,d0        ;length of stackpointer+basepage
+		move.l  a5,d1                   ;address to basepage
+		add.l   d0,d1                   ;end of program
 ;        and.b   #$f0,d1                 ;align stack
-        lea     basepage(pc),a0
-        move.l  a5,(a0)+
-        move.l  d1,sp                   ;new stackspace
-        move.l  d0,-(sp)                ;mshrink()
-        pea     (a5)                    ;start of the block, note that ALL other implementations
-                                        ;assume basepage = start of the block. That's wrong.
-        clr.w   -(sp)
-        move.w  #$4a,-(sp)              ;mshrink()
-        trap    #1
-        lea.l   12(sp),sp
+		lea     basepage(pc),a0
+		move.l  a5,(a0)+
+		move.l  d1,sp                   ;new stackspace
+		move.l  d0,-(sp)                ;mshrink()
+		pea     (a5)                    ;start of the block, note that ALL other implementations
+										;assume basepage = start of the block. That's wrong.
+		clr.w   -(sp)
+		move.w  #$4a,-(sp)              ;mshrink()
+		trap    #1
+		lea.l   12(sp),sp
+
+;## clear BSS segment
+
+		add.l #STACK_SIZE, d7
+		lsr.l   #2, d7                    ; convert BSS length in bytes to number of longs
+		addq.l  #1, d7                    ; one long to spare to make sure
+clear_bss:
+		clr.l (a4)+
+		dbra d7, clear_bss
 
 ;########################## redirect output to serial
         if (REDIRECT_OUTPUT_TO_SERIAL==1)

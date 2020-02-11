@@ -62,7 +62,7 @@ const char help_scr2_msg[]=
 	"\n"
 	"F1                : Search files in the current folder\n"
 	"                    Type the word to search then enter\n"
-	"                    Escape to abord the search\n"
+	"                    Escape to abort the search\n"
 	"F2                : Change color\n"
 	"F3                : Settings menu\n"
 	"F8                : Reboot\n"

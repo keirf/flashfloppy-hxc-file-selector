@@ -31,7 +31,7 @@ AUTOBOOT.HFE: $(EXEC)
 	mv loader/AUTOBOOT.HFE .
 
 $(EXEC):        libc/mStartupAsmC.o libc/mStartup.o libc/snprintf/snprintf.o  fectrl.o errors_def.o menu.o menu_settings.o menu_selectdrive.o menu_commands.o gui_utils.o atari_st.o media_access.o config_file.o fat_access.o fat_filelib.o fat_misc.o fat_string.o fat_table.o fat_write.o fat_cache.o msg_txt.o
-	$(C)          $(LFLAGS)           $^ -o $@
+	$(C)          $(LFLAGS)          $^ -lc -o $@
 
 atari_st.o:       atari_st.c
 	$(C)          $(CFLAGS)        -c $< -o $@

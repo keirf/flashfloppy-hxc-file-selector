@@ -871,26 +871,28 @@ int ui_mainfileselector(ui_context * ctx)
 					{
 						ctx->filter[i] = 0;
 						c = get_char();
-						if(c!='\n' && c != 127)
-						{
+						if ((c == 128) || (c == '\n')) {
+							if (c == 128) /* ESC */
+								i = 0;
+							break;
+						}
+						if (c != 127) {
 							ctx->filter[i]=c;
 							hxc_printf(ctx,LEFT_ALIGNED | INVERTED,(ctx->screen_txt_xsize/2)+8+8+i,CURDIR_Y_POS,"%c",c);
 							i++;
+						} else if (c==127 && i) {
+							i--;
+							ctx->filter[i] = 0;
+							hxc_printf(ctx,LEFT_ALIGNED | INVERTED,(ctx->screen_txt_xsize/2)+8+8+i,CURDIR_Y_POS," ");
 						}
-						else
-						{
-							if(c==127)
-							{
-								if(i)
-								{
-									i--;
-									ctx->filter[i] = 0;
-									hxc_printf(ctx,LEFT_ALIGNED | INVERTED,(ctx->screen_txt_xsize/2)+8+8+i,CURDIR_Y_POS," ");
-								}
-							}
-						}
-					}while(c!='\n' && i<16);
+					}while(i<16);
 					ctx->filter[i]=0;
+					if (i == 0) {
+						/* No filter */
+						ctx->filtermode = 0;
+						hxc_print(ctx,LEFT_ALIGNED | INVERTED,(ctx->screen_txt_xsize/2)+8,CURDIR_Y_POS,"                            ");
+						break;
+					}
 
 					hxc_printf(ctx,LEFT_ALIGNED | INVERTED,(ctx->screen_txt_xsize/2)+8+8,CURDIR_Y_POS,"[%s]",ctx->filter);
 					ctx->selectorpos=0;

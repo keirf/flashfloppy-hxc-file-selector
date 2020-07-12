@@ -77,6 +77,7 @@ keyboard_funct_mapper char_keysmap[]=
 	{'\n',28},
 
 	{127,14}, // Delete
+	{128, 1}, // ESC
 
 	{0xFF,0x00},
 };

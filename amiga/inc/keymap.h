@@ -62,7 +62,7 @@ keyboard_funct_mapper char_keysmap[]=
 	{'8',0x08},
 	{'9',0x09},
 
-	//{'0',0x00},
+	{'0',0x0F},
 	{'1',0x1D},
 	{'2',0x1E},
 	{'3',0x1F},
@@ -75,6 +75,9 @@ keyboard_funct_mapper char_keysmap[]=
 	{' ',0x40},
 	{'.',0x39},
 	{'\n',0x44},
+
+	{127,0x41}, /* Backspace */
+	{128,0x45}, /* ESC */
 
 	{0xFF,0x00},
 };

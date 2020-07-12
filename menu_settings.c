@@ -59,34 +59,6 @@ static int settings_menu_stepsound_cb(ui_context * ctx, int event, int xpos, int
 	return MENU_STAYINMENU;
 }
 
-static int settings_menu_usersound_cb(ui_context * ctx, int event, int xpos, int ypos, int parameter)
-{
-	cfgfile * cfgfile_ptr;
-
-	cfgfile_ptr=(cfgfile * )cfgfile_header;
-
-	if(event)
-	{
-		if(	event == FCT_LEFT_KEY )
-		{
-			if(cfgfile_ptr->buzzer_duty_cycle)
-				cfgfile_ptr->buzzer_duty_cycle--;
-		}
-		else
-		{
-			if(cfgfile_ptr->buzzer_duty_cycle<0x80)
-				cfgfile_ptr->buzzer_duty_cycle++;
-			cfgfile_ptr->ihm_sound = 0xFF;
-		}
-	}
-	if(!cfgfile_ptr->buzzer_duty_cycle)
-		cfgfile_ptr->ihm_sound=0x00;
-
-	hxc_printf(ctx,LEFT_ALIGNED,xpos,ypos, "%d  ",cfgfile_ptr->buzzer_duty_cycle);
-
-	return MENU_STAYINMENU;
-}
-
 static int settings_menu_lcdstandby_cb(ui_context * ctx, int event, int xpos, int ypos, int parameter)
 {
 	cfgfile * cfgfile_ptr;
@@ -108,31 +80,6 @@ static int settings_menu_lcdstandby_cb(ui_context * ctx, int event, int xpos, in
 	}
 
 	hxc_printf(ctx,LEFT_ALIGNED,xpos,ypos,"%d s ",cfgfile_ptr->back_light_tmr);
-
-	return MENU_STAYINMENU;
-}
-
-static int settings_menu_sdstandby_cb(ui_context * ctx, int event, int xpos, int ypos, int parameter)
-{
-	cfgfile * cfgfile_ptr;
-
-	cfgfile_ptr=(cfgfile * )cfgfile_header;
-
-	if(event)
-	{
-		if(	event == FCT_LEFT_KEY )
-		{
-			if(cfgfile_ptr->standby_tmr)
-				cfgfile_ptr->standby_tmr--;
-		}
-		else
-		{
-			if(cfgfile_ptr->standby_tmr<0xFF)
-				cfgfile_ptr->standby_tmr++;
-		}
-	}
-
-	hxc_printf(ctx,LEFT_ALIGNED,xpos,ypos, "%d s ",cfgfile_ptr->standby_tmr);
 
 	return MENU_STAYINMENU;
 }
@@ -191,10 +138,8 @@ const menu settings_menu[]=
 	{"Floppy Emulator settings:",   0,                                0, 0, LEFT_ALIGNED},
 	{"",                                0,                                0, 0, LEFT_ALIGNED},
 	{"Track step sound :",              settings_menu_stepsound_cb,       0, 0, LEFT_ALIGNED},
-	{"User interface sound:",           settings_menu_usersound_cb,       0, 0, LEFT_ALIGNED},
 	{"",                                0,                                0, 0, LEFT_ALIGNED},	
 	{"LCD Backlight standby:",          settings_menu_lcdstandby_cb,      0, 0, LEFT_ALIGNED},
-	{"SD/USB Standby:",                 settings_menu_sdstandby_cb,       0, 0, LEFT_ALIGNED},
 	{"",                                0,                                0, 0, LEFT_ALIGNED},	
 	{"DF1 drive :",                     settings_menu_driveb_cb,          0, 0, LEFT_ALIGNED},
 	{"Load AUTOBOOT.HFE at power up :", settings_menu_autobootpowerup_cb, 0, 0, LEFT_ALIGNED},

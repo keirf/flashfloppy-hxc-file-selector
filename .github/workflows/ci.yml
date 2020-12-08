@@ -76,7 +76,7 @@ jobs:
         git rev-parse HEAD >HxC_Compat_Mode/COMMIT
         cd ..
         mkdir -p _cidist
-        mv HxC_FF_File_Selector/HxC_Compat_Mode _cidist/HxC_Compat_Mode-${{ steps.vars.outputs.sha_short }}
+        mv HxC_FF_File_Selector/HxC_Compat_Mode _cidist/HxC_FF_File_Selector.CI.${{ steps.vars.outputs.sha_short }}
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v2

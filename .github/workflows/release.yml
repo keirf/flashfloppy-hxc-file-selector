@@ -1,0 +1,104 @@
+on:
+  push:
+    tags:
+    - 'v*-FF'
+
+name: Release
+
+jobs:
+  build:
+    env:
+      AMIGAGCC_SHA: ea5e974248d
+    runs-on: ubuntu-20.04
+    steps:
+
+    - uses: actions/checkout@v2
+      with:
+        repository: keirf/Disk-Utilities
+        path: Disk-Utilities
+
+    - uses: actions/checkout@v2
+      with:
+        path: HxC_FF_File_Selector
+
+    - name: Set environment variables
+      id: vars
+      run: |
+        echo "::set-output name=ref::$(echo ${{ github.ref }} | sed -e's#.*/##')"
+
+    - name: Dependency packages (apt)
+      run: |
+        sudo add-apt-repository ppa:vriviere/ppa
+        sudo apt update
+        sudo apt install -y cross-mint-essential
+        sudo apt install -y autoconf bison build-essential flex gettext lhasa libgmp-dev libmpc-dev libmpfr-dev ncurses-dev rsync texinfo wget tzdata
+
+    - name: Cache toolchain
+      id: cache-toolchain
+      uses: actions/cache@v2
+      with:
+        path: ~/cross
+        key: ${{ runner.os }}-${{ env.AMIGAGCC_SHA }}
+
+    - name: Build toolchain
+      if: steps.cache-toolchain.outputs.cache-hit != 'true'
+      env:
+        MAKE_OPTS: -j4
+        MAKE_DIR: cross
+      run: |
+        git config --global pull.rebase false
+        export MDIR=$HOME/${MAKE_DIR}
+        mkdir -p $MDIR/bin
+        export PATH=$PATH:$MDIR
+        mkdir ~/_tc && cd ~/_tc
+        git clone https://github.com/bebbo/amiga-gcc.git
+        cd amiga-gcc
+        git checkout ${AMIGAGCC_SHA}
+        make update
+        make all ${MAKE_OPTS} PREFIX=$MDIR verbose=y
+
+    - name: Build disk-analyse
+      run: |
+        cd Disk-Utilities
+        make -j4 PREFIX=$HOME/install
+        mkdir -p $HOME/install
+        make install PREFIX=$HOME/install
+
+    - name: Install exe2adf
+      run: |
+        wget http://www.exe2adf.com/downloads/exe2adf-v03e-linux.tar.gz
+        tar xf exe2adf-v03e-linux.tar.gz
+        cp exe2adf-linux64bit $HOME/install/bin/exe2adf
+        rm -rf exe2adf*
+
+    - name: Build dist
+      run: |
+        export LD_LIBRARY_PATH=$HOME/install/lib
+        export PATH=$PATH:$HOME/install/bin:$HOME/cross/bin
+        cd HxC_FF_File_Selector
+        make
+        echo "${{ steps.vars.outputs.ref }}" >HxC_Compat_Mode/RELEASE
+        mv HxC_Compat_Mode HxC_Compat_Mode-${{ steps.vars.outputs.ref }}
+        zip -r HxC_Compat_Mode-${{ steps.vars.outputs.ref }} HxC_Compat_Mode-${{ steps.vars.outputs.ref }}
+
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref }}
+        release_name: ${{ steps.vars.outputs.ref }}
+        draft: false
+        prerelease: false
+
+    - name: Upload Release Asset
+      id: upload-release-asset 
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: HxC_FF_File_Selector/HxC_Compat_Mode-${{ steps.vars.outputs.ref }}.zip
+        asset_name: HxC_Compat_Mode-${{ steps.vars.outputs.ref }}.zip
+        asset_content_type: application/zip

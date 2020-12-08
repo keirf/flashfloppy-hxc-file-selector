@@ -1,0 +1,85 @@
+name: CI
+on: [push, pull_request]
+jobs:
+  build:
+    env:
+      AMIGAGCC_SHA: ea5e974248d
+    runs-on: ubuntu-20.04
+    steps:
+
+    - uses: actions/checkout@v2
+      with:
+        repository: keirf/Disk-Utilities
+        path: Disk-Utilities
+
+    - uses: actions/checkout@v2
+      with:
+        path: HxC_FF_File_Selector
+
+    - name: Set environment variables
+      id: vars
+      run: |
+        cd HxC_FF_File_Selector
+        echo "::set-output name=sha_short::$(git rev-parse --short HEAD)"
+
+    - name: Dependency packages (apt)
+      run: |
+        sudo add-apt-repository ppa:vriviere/ppa
+        sudo apt update
+        sudo apt install -y cross-mint-essential
+        sudo apt install -y autoconf bison build-essential flex gettext lhasa libgmp-dev libmpc-dev libmpfr-dev ncurses-dev rsync texinfo wget tzdata
+
+    - name: Cache toolchain
+      id: cache-toolchain
+      uses: actions/cache@v2
+      with:
+        path: ~/cross
+        key: ${{ runner.os }}-${{ env.AMIGAGCC_SHA }}
+
+    - name: Build toolchain
+      if: steps.cache-toolchain.outputs.cache-hit != 'true'
+      env:
+        MAKE_OPTS: -j4
+        MAKE_DIR: cross
+      run: |
+        git config --global pull.rebase false
+        export MDIR=$HOME/${MAKE_DIR}
+        mkdir -p $MDIR/bin
+        export PATH=$PATH:$MDIR
+        mkdir ~/_tc && cd ~/_tc
+        git clone https://github.com/bebbo/amiga-gcc.git
+        cd amiga-gcc
+        git checkout ${AMIGAGCC_SHA}
+        make update
+        make all ${MAKE_OPTS} PREFIX=$MDIR verbose=y
+
+    - name: Build disk-analyse
+      run: |
+        cd Disk-Utilities
+        make -j4 PREFIX=$HOME/install
+        mkdir -p $HOME/install
+        make install PREFIX=$HOME/install
+
+    - name: Install exe2adf
+      run: |
+        wget http://www.exe2adf.com/downloads/exe2adf-v03e-linux.tar.gz
+        tar xf exe2adf-v03e-linux.tar.gz
+        cp exe2adf-linux64bit $HOME/install/bin/exe2adf
+        rm -rf exe2adf*
+
+    - name: Build dist
+      run: |
+        export LD_LIBRARY_PATH=$HOME/install/lib
+        export PATH=$PATH:$HOME/install/bin:$HOME/cross/bin
+        cd HxC_FF_File_Selector
+        make
+        git rev-parse HEAD >HxC_Compat_Mode/COMMIT
+        cd ..
+        mkdir -p _cidist
+        mv HxC_FF_File_Selector/HxC_Compat_Mode _cidist/HxC_Compat_Mode-${{ steps.vars.outputs.sha_short }}
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v2
+      with:
+        name: HxC_FF_File_Selector.CI.${{ steps.vars.outputs.sha_short }}
+        path: _cidist

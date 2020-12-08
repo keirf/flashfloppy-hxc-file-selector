@@ -1,6 +1,9 @@
 
 # HxC File Selector for FlashFloppy
 
+![CI Badge][ci-badge]
+![Version Badge][version-badge]
+
 A modified version of the HxC project's file selector/manager for
 enhanced compatibility with FlashFloppy on Amiga and Atari ST. The
 FlashFloppy project should work with unmodified original HxC
@@ -101,3 +104,6 @@ Install prerequisites as above. Then:
  # cd HxC_FF_File_Selector
  # make
 ```
+
+[ci-badge]: https://github.com/keirf/HxC_FF_File_Selector/workflows/CI/badge.svg
+[version-badge]: https://img.shields.io/github/v/release/keirf/HxC_FF_File_Selector

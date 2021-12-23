@@ -2,8 +2,6 @@ name: CI
 on: [push, pull_request]
 jobs:
   build:
-    env:
-      AMIGAGCC_SHA: ea5e974248d
     runs-on: ubuntu-20.04
     steps:
 
@@ -34,7 +32,7 @@ jobs:
       uses: actions/cache@v2
       with:
         path: ~/cross
-        key: ${{ runner.os }}-${{ env.AMIGAGCC_SHA }}
+        key: ${{ runner.os }}
 
     - name: Build toolchain
       if: steps.cache-toolchain.outputs.cache-hit != 'true'
@@ -49,9 +47,8 @@ jobs:
         mkdir ~/_tc && cd ~/_tc
         git clone https://github.com/bebbo/amiga-gcc.git
         cd amiga-gcc
-        git checkout ${AMIGAGCC_SHA}
         make update
-        make all ${MAKE_OPTS} PREFIX=$MDIR verbose=y
+        make all ${MAKE_OPTS} PREFIX=$MDIR
 
     - name: Build disk-analyse
       run: |

@@ -54,8 +54,8 @@ the selector software:
 
 To build the HFE image:
 ```
- # git clone https://github.com/keirf/HxC_FF_File_Selector.git
- # cd HxC_FF_File_Selector/amiga
+ # git clone https://github.com/keirf/flashfloppy-hxc-file-selector.git
+ # cd flashfloppy-hxc-file-selector/amiga
  # make
 ```
 
@@ -91,8 +91,8 @@ on your PATH when you build the selector software:
 
 To build the HFE image:
 ```
- # git clone https://github.com/keirf/HxC_FF_File_Selector.git
- # cd HxC_FF_File_Selector/atari_st
+ # git clone https://github.com/keirf/flashfloppy-hxc-file-selector.git
+ # cd flashfloppy-hxc-file-selector/atari_st
  # make
 ```
 
@@ -100,10 +100,10 @@ To build the HFE image:
 
 Install prerequisites as above. Then:
 ```
- # git clone https://github.com/keirf/HxC_FF_File_Selector.git
- # cd HxC_FF_File_Selector
+ # git clone https://github.com/keirf/flashfloppy-hxc-file-selector.git
+ # cd flashfloppy-hxc-file-selector
  # make
 ```
 
-[ci-badge]: https://github.com/keirf/HxC_FF_File_Selector/workflows/CI/badge.svg
-[version-badge]: https://img.shields.io/github/v/release/keirf/HxC_FF_File_Selector
+[ci-badge]: https://github.com/keirf/flashfloppy-hxc-file-selector/workflows/CI/badge.svg
+[version-badge]: https://img.shields.io/github/v/release/keirf/flashfloppy-hxc-file-selector

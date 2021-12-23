@@ -14,12 +14,12 @@ jobs:
 
     - uses: actions/checkout@v2
       with:
-        path: HxC_FF_File_Selector
+        path: flashfloppy-hxc-file-selector
 
     - name: Set environment variables
       id: vars
       run: |
-        cd HxC_FF_File_Selector
+        cd flashfloppy-hxc-file-selector
         echo "::set-output name=sha_short::$(git rev-parse --short HEAD)"
 
     - name: Dependency packages (apt)
@@ -71,15 +71,15 @@ jobs:
       run: |
         export LD_LIBRARY_PATH=$HOME/install/lib
         export PATH=$PATH:$HOME/install/bin:$HOME/cross/bin
-        cd HxC_FF_File_Selector
+        cd flashfloppy-hxc-file-selector
         make
         git rev-parse HEAD >HxC_Compat_Mode/COMMIT
         cd ..
         mkdir -p _cidist
-        mv HxC_FF_File_Selector/HxC_Compat_Mode _cidist/HxC_FF_File_Selector.CI.${{ steps.vars.outputs.sha_short }}
+        mv flashfloppy-hxc-file-selector/HxC_Compat_Mode _cidist/flashfloppy-hxc-file-selector.CI.${{ steps.vars.outputs.sha_short }}
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v2
       with:
-        name: HxC_FF_File_Selector.CI.${{ steps.vars.outputs.sha_short }}
+        name: flashfloppy-hxc-file-selector.CI.${{ steps.vars.outputs.sha_short }}
         path: _cidist

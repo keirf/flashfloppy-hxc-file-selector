@@ -17,6 +17,11 @@ This project is cross-compiled on an x86 Ubuntu Linux system. However
 other similar Linux-base systems (or a Linux virtual environment on
 another OS) can likely be made to work quite easily.
 
+This project uses exe2adf written by Bonefish/Reality. For
+convenience I have included the Linux 64-bit binary within this
+repository. You can find the original download on Bonefish's
+[exe2adf website](http://www.exe2adf.com). Check it out!
+
 ## Building for Amiga
 
 You must build and install bebbo's GCC v6 port for Amiga.  GCC has
@@ -32,10 +37,6 @@ directory, for example:
  # cd amiga-gcc ; make update
  # make all -j8 PREFIX=$HOME/install
 ```
-
-Building the ADF image from the selector executable requires
-bonefish's exe2adf on your path. Download it
-[here](http://www.exe2adf.com).
 
 To produce the final HFE images from ADF requires disk-analyse. Download
 and build it:

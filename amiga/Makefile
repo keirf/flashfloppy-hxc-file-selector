@@ -18,8 +18,8 @@ AUTOBOOT.HFE: $(EXEC)
 	m68k-amigaos-strip -s $(EXEC)
 	$(MAKE) bootblock.bin
 	$(PYTHON) adf/mk_adf.py bootblock.bin $(EXEC) trackload.bin
-	exe2adf -b trackload.bin -i $(EXEC) -d adf/extra -l $(EXEC) \
-	-a AUTOBOOT.ADF -0 >/dev/null
+	./adf/exe2adf-linux64bit -b trackload.bin -i $(EXEC) -d adf/extra \
+	-l $(EXEC) -a AUTOBOOT.ADF -0 >/dev/null
 	disk-analyse AUTOBOOT.ADF AUTOBOOT.HFE
 
 $(EXEC): entry.o fectrl.o errors_def.o gui_utils.o amiga.o libnix.o math.o crc.o fat_access.o fat_filelib.o fat_misc.o fat_string.o fat_table.o fat_write.o fat_cache.o reboot.o msg_txt.o menu.o menu_settings.o menu_selectdrive.o menu_commands.o config_file.o media_access.o

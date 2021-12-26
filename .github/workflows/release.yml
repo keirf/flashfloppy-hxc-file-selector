@@ -61,13 +61,6 @@ jobs:
         mkdir -p $HOME/install
         make install PREFIX=$HOME/install
 
-    - name: Install exe2adf
-      run: |
-        wget http://www.exe2adf.com/downloads/exe2adf-v03e-linux.tar.gz
-        tar xf exe2adf-v03e-linux.tar.gz
-        cp exe2adf-linux64bit $HOME/install/bin/exe2adf
-        rm -rf exe2adf*
-
     - name: Build dist
       run: |
         export LD_LIBRARY_PATH=$HOME/install/lib

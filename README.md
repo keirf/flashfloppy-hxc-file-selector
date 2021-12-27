@@ -41,8 +41,8 @@ directory, for example:
 To produce the final HFE images from ADF requires disk-analyse. Download
 and build it:
 ```
- # git clone https://github.com/keirf/Disk-Utilities.git
- # cd Disk-Utilities
+ # git clone https://github.com/keirf/disk-utilities.git
+ # cd disk-utilities
  # PREFIX=$HOME/install make && make install
 ```
 

@@ -66,10 +66,10 @@ jobs:
         git rev-parse HEAD >HxC_Compat_Mode/COMMIT
         cd ..
         mkdir -p _cidist
-        mv flashfloppy-hxc-file-selector/HxC_Compat_Mode _cidist/flashfloppy-hxc-file-selector.CI.${{ steps.vars.outputs.sha_short }}
+        mv flashfloppy-hxc-file-selector/HxC_Compat_Mode _cidist/flashfloppy-hxc-file-selector.ci.${{ steps.vars.outputs.sha_short }}
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v2
       with:
-        name: flashfloppy-hxc-file-selector.CI.${{ steps.vars.outputs.sha_short }}
+        name: flashfloppy-hxc-file-selector.ci.${{ steps.vars.outputs.sha_short }}
         path: _cidist
